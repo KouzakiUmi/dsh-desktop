@@ -1,7 +1,7 @@
 /** Adapt Next's native state to the existing Desktop settings components. */
 import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { DesktopSettingsApi, DesktopSettingsView } from '../../../dsh-plugin-desktop-beta/src/client/desktop-settings-api.ts'
-import type { DesktopNotificationSettings, DesktopShellSettings } from '../../../dsh-plugin-desktop-beta/src/client/DesktopSettingsSection.tsx'
+import type { DesktopSettingsApi, DesktopSettingsView } from '../../adopted/src/client/desktop-settings-api.ts'
+import type { DesktopNotificationSettings, DesktopShellSettings } from '../../adopted/src/client/DesktopSettingsSection.tsx'
 import { DEFAULT_PROFILE, type DesktopBridge, type DesktopBrowserLinks, type DesktopCommand, type DesktopPreferences, type DesktopState } from '../desktop-contract.ts'
 
 /** The part of a dsh `ConfigForm` the Desktop settings components read and write. */

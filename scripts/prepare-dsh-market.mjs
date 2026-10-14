@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-export const MARKET_WORKSPACES = ['dsh-plugin-desktop', 'dsh-plugin-desktop-beta', 'dsh-desktop-next']
+export const MARKET_WORKSPACES = ['dsh-desktop-next']
 export const marketResolution = version => `patch:dshmarket@npm%3A${version}#./.yarn/patches/dshmarket-desktop.patch`
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const registry = 'https://registry.npmjs.org/dshmarket/latest'

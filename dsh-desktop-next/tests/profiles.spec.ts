@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { composeEntries, loadOverlayPatches, loadProfileDirectory, OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-app-boot'
 import { AA_PACKAGE, COMMUNITY_MARKET_PACKAGE, DSH_MARKET_PACKAGE, loadNextProfile, NEXT_PACKAGE, NextProfiles, profileName, readNextProfilePatches, WEB_BUNDLES } from '../src/profiles.ts'
 import * as privateFiles from '../src/private-files.ts'
-import * as linkProjections from '../../dsh-plugin-desktop-beta/src/link-projections.ts'
+import * as linkProjections from '../adopted/src/link-projections.ts'
 
 const roots: string[] = []
 function profiles() { const home = mkdtempSync(join(tmpdir(), 'dsh-next-profiles-')); roots.push(home); return new NextProfiles(home) }

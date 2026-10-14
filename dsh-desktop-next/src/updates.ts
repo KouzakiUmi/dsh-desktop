@@ -1,9 +1,9 @@
 /** Main-process update ownership survives a stopped or broken Profile Host. */
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { checkForDesktopUpdate, type UpdateCheckResult, type UpdateRequest } from '../../dsh-plugin-desktop-beta/src/update-checker.ts'
-import { desktopUpdateFilename, downloadDesktopUpdate, type UpdateArtifactRequest } from '../../dsh-plugin-desktop-beta/src/update-download.ts'
-import { getOrCreateDesktopInstallationId } from '../../dsh-plugin-desktop-beta/src/desktop-installation-id.ts'
+import { checkForDesktopUpdate, type UpdateCheckResult, type UpdateRequest } from '../adopted/src/update-checker.ts'
+import { desktopUpdateFilename, downloadDesktopUpdate, type UpdateArtifactRequest } from '../adopted/src/update-download.ts'
+import { getOrCreateDesktopInstallationId } from '../adopted/src/desktop-installation-id.ts'
 import { privateDirectory } from './private-files.ts'
 import type { NextUpdateState } from './update-state.ts'
 

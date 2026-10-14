@@ -19,7 +19,7 @@ const channelFlag = process.argv.indexOf('--channel')
 const requestedChannel = channelFlag === -1 ? undefined : process.argv[channelFlag + 1]
 
 if (mode !== '--write' && mode !== '--check') {
-  throw new Error('usage: node scripts/sync-vendored-runtime.mjs <--write|--check> [--channel stable|beta]')
+  throw new Error('usage: node scripts/sync-vendored-runtime.mjs <--write|--check> [--channel next]')
 }
 
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
@@ -33,23 +33,15 @@ const fail = message => { throw new Error(`sync-vendored-runtime: ${message}`) }
 
 const upstreamDocument = readJson(upstreamPath)
 const channel = requestedChannel ?? upstreamDocument.activeChannel
-if (channel !== 'stable' && channel !== 'beta') fail(`unknown release channel ${JSON.stringify(channel)}`)
+if (channel !== 'next') fail(`unknown release channel ${JSON.stringify(channel)}`)
 const upstream = upstreamDocument.channels?.[channel]
 if (upstream === undefined || typeof upstream !== 'object') fail(`missing upstream metadata for ${channel}`)
-const otherChannel = channel === 'stable' ? 'beta' : 'stable'
-const otherVersion = upstreamDocument.channels?.[otherChannel]?.sourceVersion
-if (typeof otherVersion !== 'string' || !/^[0-9A-Za-z][0-9A-Za-z.-]*$/u.test(otherVersion)) {
-  fail(`unsafe ${otherChannel} source version ${JSON.stringify(otherVersion)}`)
-}
 const marketPath = join(root, 'dsh-community-market', 'package.json')
 const pluginPaths = [
   join(root, upstream.package, 'package.json'),
-  ...(channel === 'beta' ? [marketPath] : []),
+  marketPath,
 ]
-// Stable and Beta both load the market bundle, and dsh 0.2 refuses a bundle
-// whose dsh peers exclude the running runtime, so its peers accept every
-// channel's version while its build dependencies follow Beta.
-const marketPeerRange = [...new Set(['stable', 'beta'].map(name => upstreamDocument.channels?.[name]?.sourceVersion))].join(' || ')
+const marketPeerRange = upstream.sourceVersion
 const expectedRange = (path, field) => path === marketPath && field === 'peerDependencies' ? marketPeerRange : version
 const version = upstream.sourceVersion
 if (typeof version !== 'string' || !/^[0-9A-Za-z][0-9A-Za-z.-]*$/u.test(version)) {
@@ -62,8 +54,7 @@ const manifestPath = join(vendorDirectory, 'manifest.json')
 const resolutionSelector = (name, range = version) => `${name}@npm:${range}`
 const isChannelResolution = selector => selector.endsWith(`@npm:${version}`)
   || selector.endsWith(`@npm:^${version}`)
-const isOtherChannelResolution = selector => selector.endsWith(`@npm:${otherVersion}`)
-  || selector.endsWith(`@npm:^${otherVersion}`)
+const isOtherChannelResolution = () => false
 
 function packageName(filename) {
   const suffix = `-${version}.tgz`

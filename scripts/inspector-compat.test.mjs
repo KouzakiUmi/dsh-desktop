@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { runInNewContext } from 'node:vm'
-const ts = createRequire(resolve('dsh-plugin-desktop-beta/package.json'))('typescript')
+const ts = createRequire(resolve('dsh-desktop-next/package.json'))('typescript')
 
 function nodes(file, predicate) {
   const matches = []
@@ -17,11 +17,11 @@ function nodes(file, predicate) {
   return matches
 }
 
-for (const workspace of ['dsh-plugin-desktop-beta', 'dsh-desktop-next']) {
+for (const workspace of ['dsh-desktop-next']) {
   test(`${workspace}: official Reload DevTools completes through the hosted embedder callback`, () => {
     const require = createRequire(resolve(workspace, 'package.json'))
     const manifest = require.resolve('@deepseek-ai/dsh-experimental-inspector/package.json')
-    assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).version, '0.2.1-alpha.2')
+    assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).version, '0.2.1-alpha.3')
     const directory = join(dirname(manifest), 'lib/devtools/chunks')
     const parse = (prefix, marker) => {
       const files = readdirSync(directory).filter(name => name.startsWith(prefix + '-') && name.endsWith('.js')

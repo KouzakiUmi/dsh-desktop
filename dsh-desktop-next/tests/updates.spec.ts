@@ -5,8 +5,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { NextUpdates, type NextUpdateOptions } from '../src/updates.ts'
 import { serveMacUpdate } from '../src/mac-update-feed.ts'
 import { updateAction, updateLabel } from '../src/update-state.ts'
-import type { UpdateRequest } from '../../dsh-plugin-desktop-beta/src/update-checker.ts'
-import type { UpdateArtifactRequest } from '../../dsh-plugin-desktop-beta/src/update-download.ts'
+import type { UpdateRequest } from '../adopted/src/update-checker.ts'
+import type { UpdateArtifactRequest } from '../adopted/src/update-download.ts'
 
 const roots: string[] = []
 const owners: NextUpdates[] = []

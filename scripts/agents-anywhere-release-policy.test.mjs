@@ -31,7 +31,7 @@ function fixture(t, desktopVersion = version) {
     write(`${workspace}/package.json`, {
       dependencies: {
         [AA_PACKAGE]: `file:../vendor/agents-anywhere/${artifact}`,
-        ...Object.fromEntries(AA_PEERS.map(name => [name, index === 0 ? '0.1.5-rc.2' : '0.1.6-alpha.2'])),
+        ...Object.fromEntries(AA_PEERS.map(name => [name, '0.1.5-rc.2 || 0.1.6-alpha.2'])),
       },
     })
     write(`${workspace}/node_modules/${AA_PACKAGE}/package.json`, { version: desktopVersion, peerDependencies: runtimePeers })
@@ -98,8 +98,8 @@ test('pins the AA staging type graph while keeping both Desktop runtime peer ran
 
 test('rejects the former stable-old/beta-new split even if the tarball is valid', t => {
   const { root, patch } = fixture(t)
-  patch('dsh-plugin-desktop/package.json', data => { data.dependencies[AA_PACKAGE] = 'file:../vendor/agents-anywhere/old.tgz' })
-  assert.throws(() => assertPreparedAaRelease(root, commit), /dsh-plugin-desktop references a different AA artifact/)
+  patch('dsh-desktop-next/package.json', data => { data.dependencies[AA_PACKAGE] = 'file:../vendor/agents-anywhere/old.tgz' })
+  assert.throws(() => assertPreparedAaRelease(root, commit), /dsh-desktop-next references a different AA artifact/)
 })
 
 test('rejects a Next install left on the old AA artifact', t => {
@@ -115,13 +115,13 @@ test('rejects a prepared artifact after AA main advances', t => {
 
 test('rejects stale installed code despite updated manifests and provenance', t => {
   const { root, patch } = fixture(t)
-  patch(`dsh-plugin-desktop/node_modules/${AA_PACKAGE}/package.json`, data => { data.version = '0.1.0-old' })
+  patch(`dsh-desktop-next/node_modules/${AA_PACKAGE}/package.json`, data => { data.version = '0.1.0-old' })
   assert.throws(() => assertPreparedAaRelease(root, commit), /outdated installed AA package/)
 })
 
 test('requires rebuilding the AA peer patch after a Desktop runtime update', t => {
   const { root, patch } = fixture(t)
-  patch('dsh-plugin-desktop-beta/package.json', data => { data.dependencies[AA_PEERS[0]] = '0.1.6-alpha.3' })
+  patch('dsh-desktop-next/package.json', data => { data.dependencies[AA_PEERS[0]] = '0.1.6-alpha.3' })
   assert.throws(() => assertPreparedAaRelease(root, commit), /runtime peers have changed/)
 })
 

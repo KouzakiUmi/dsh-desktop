@@ -413,7 +413,7 @@
       "artifactName": "DSH-NEXT-${version}-${arch}-Setup.${ext}",
       "installerIcon": "build/app-icon.ico",
       "uninstallerIcon": "build/app-icon.ico",
-      "include": "../dsh-plugin-desktop-beta/build/installer.nsh"
+      "include": "./adopted/build/installer.nsh"
     },
     "linux": {
       "target": [
