@@ -48,6 +48,7 @@ it('answers platform package requests with the unpacked copy and leaves the driv
   // Node's require.resolve bypasses hooks in some releases; Electron's honours them, as the packaged build shows.
   const directory = realpathSync(dirname(join(f.unpacked, manifest)))
   expect(f.require(`${PLATFORM}/package.json`)).toMatchObject({ path: directory })
+  expect(createRequire(join(f.runtime, DRIVER, 'dist', 'native', 'node-runtime.js')).resolve(`${PLATFORM}/package.json`)).toBe(join(directory, 'package.json'))
   expect(existsSync(join(directory, 'libcua_driver_sdk.dylib'))).toBe(true)
   expect(createRequire(join(f.runtime, 'package.json'))('@trycua/cua-driver')).toEqual({ entry: join(f.runtime, DRIVER, 'dist') })
   expect((f.require('node:path') as typeof import('node:path')).join).toBe(join)

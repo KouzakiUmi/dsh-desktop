@@ -1,14 +1,26 @@
 /** Boot the real Host from one packaged Next archive and stop it; no window, no user data. */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const BADGE_BUNDLE = '@deepseek-ai/dsh-experimental-badge-skill-bundle'
+
+/** System temp is not writable from the packaged Electron child on some Windows hosts. */
+function writableSmokeHome(prefix) {
+  try {
+    return mkdtempSync(join(tmpdir(), prefix))
+  } catch (error) {
+    if (error?.code !== 'EPERM') throw error
+    const fallback = join(dirname(fileURLToPath(import.meta.url)), '..', '.pack-temp')
+    mkdirSync(fallback, { recursive: true })
+    return mkdtempSync(join(fallback, prefix))
+  }
+}
 const root = process.argv[2]
 if (!root) throw new Error('packaged-host-smoke: expected the packaged application root')
 const { NextDesktopRuntime } = await import(pathToFileURL(join(root, 'lib', 'desktop-runtime.js')).href)
-const home = mkdtempSync(join(tmpdir(), 'dsh-next-packaged-smoke-'))
+const home = writableSmokeHome('dsh-next-packaged-smoke-')
 let failures = 0
 // The payload of this CPU sits beside the archive, where the packaged shell selects it.
 const runtime = new NextDesktopRuntime({ root, home, primaryRuntime: join(dirname(root), 'runtime', process.arch, 'primary-runtime'), executable: process.execPath, addresses: () => [],

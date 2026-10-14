@@ -76,7 +76,9 @@ export function officePackageDirectories(root: string, target: OfficeTarget): st
         throw new Error(`Office dependency ${name} required by ${manifest.name ?? manifestPath} is missing.`)
       }
       if (optional) {
-        const dependency = readManifest(join(dependencyDirectory, 'package.json'))
+        const manifestFile = join(dependencyDirectory, 'package.json')
+        if (!existsSync(manifestFile)) continue
+        const dependency = readManifest(manifestFile)
         if (!supports(dependency.os, target.platform) || !supports(dependency.cpu, target.arch)) continue
       }
       visit(dependencyDirectory)

@@ -1,12 +1,14 @@
+import { existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { officePackageDirectories, officeUnpackPatterns, selectOfficeEngine } from '../scripts/office-packages.ts'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+const darwinEngine = join(root, 'node_modules', '@deepseek-ai', 'libreoffice-kit-darwin-arm64')
 const names = (platform: string, arch: string): string[] => officePackageDirectories(root, { platform, arch }).map(directory => relative(join(root, 'node_modules'), directory))
 
-it('resolves the installed Office closure with the native engine of each Darwin CPU', () => {
+it.skipIf(!existsSync(darwinEngine))('resolves the installed Office closure with the native engine of each Darwin CPU', () => {
   const arm64 = names('darwin', 'arm64')
   expect(arm64).toEqual(expect.arrayContaining(['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-darwin-arm64', '@koromix/koffi-darwin-arm64', 'fflate', 'fontkit', 'koffi', 'saxes']))
   expect(arm64).not.toContain('@deepseek-ai/libreoffice-kit-darwin-x64')
@@ -17,7 +19,7 @@ it('resolves the installed Office closure with the native engine of each Darwin 
   expect(x64).not.toContain('@deepseek-ai/libreoffice-kit-darwin-arm64')
 })
 
-it('unpacks the union of both CPUs once as application-relative globs', () => {
+it.skipIf(!existsSync(darwinEngine))('unpacks the union of both CPUs once as application-relative globs', () => {
   const patterns = officeUnpackPatterns(root, 'darwin', ['arm64', 'x64'])
   for (const name of ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-darwin-arm64', '@deepseek-ai/libreoffice-kit-darwin-x64', 'fflate', 'fontkit', 'koffi', 'saxes']) {
     expect(patterns).toContain(`**/node_modules/${name}/**/*`)
