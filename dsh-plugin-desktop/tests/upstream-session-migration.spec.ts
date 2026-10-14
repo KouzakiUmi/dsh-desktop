@@ -1,11 +1,24 @@
 /** Exercise the shipped JSONL worker and native lock after retiring Desktop's preset alias. */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, type Plugin } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+// Pull the `ctx.sessionPersistence` Context augmentation into this program:
+// 0.2.1-alpha.3's JSONL entry no longer imports the seam package itself.
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+
+// The channels ship different entry shapes for the same backend: 0.2.1-alpha.3
+// exports a named function plugin (`apply`), while 0.2.0-rc.2 exports the
+// backend class as the default. Both are cordis plugin entries; read whichever
+// the installed module actually provides so this spec compiles and runs
+// against either channel's installed contract. Spread to a plain object
+// first: module namespaces can inherit `Function.prototype.apply` under a
+// test runner's ESM interop, and own-property selection must not consult the
+// prototype chain.
+const shipped: { apply?: Plugin.Object; default?: Plugin.Constructor } = { ...JsonlSessionPersistence }
 
 it('migrates a released code session through the installed V4 worker and preserves its V2 log', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-v4-migration-'))
@@ -40,7 +53,9 @@ it('migrates a released code session through the installed V4 worker and preserv
   try {
     await mkdir(directory, { recursive: true })
     await writeFile(join(directory, 'session.v2.jsonl'), source)
-    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    const backend = shipped.apply ?? shipped.default
+    if (backend === undefined) throw new Error('dsh-session-persistence-jsonl exposes no plugin entry')
+    await ctx.plugin(backend, { root, compression: 'none' })
     const handle = await ctx.sessionPersistence.open(id, 'write')
     try {
       expect(handle.header).toMatchObject({ version: 4, agentPreset: 'ptc' })

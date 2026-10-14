@@ -83,6 +83,9 @@ it('reads archive entries from their offsets, unpacked entries from the physical
 })
 
 it('reports stray root entries, policy leftovers, packed native code and packed shell-executed files', async () => {
+  // A driver for a platform this package never ships: the audit must report both the file-policy
+  // omission of the foreign native package and the unpack requirement for it.
+  const foreignCua = `@trycua/cua-driver-${target.platform === 'win32' ? 'darwin-arm64' : 'win32-x64'}`
   const { resources } = await assembled((app) => {
     mkdirSync(join(app, '.desktop-next', 'home'), { recursive: true })
     writeFileSync(join(app, '.desktop-next', 'home', 'desktop-next.json'), '{}')
@@ -95,8 +98,8 @@ it('reports stray root entries, policy leftovers, packed native code and packed 
     writeFileSync(join(app, 'node_modules', '@deepseek-ai', 'dsh-agent-preset', 'skills', 'agent-experience', 'SKILL.md'), '---\nname: agent-experience\n---\n')
     mkdirSync(join(app, 'node_modules', '@deepseek-ai', 'dsh-skill-badge', 'assets'), { recursive: true })
     writeFileSync(join(app, 'node_modules', '@deepseek-ai', 'dsh-skill-badge', 'assets', 'dsh-badge.png'), 'png\n')
-    mkdirSync(join(app, 'node_modules', '@trycua', 'cua-driver-darwin-arm64'), { recursive: true })
-    writeFileSync(join(app, 'node_modules', '@trycua', 'cua-driver-darwin-arm64', 'package.json'), '{"name":"@trycua/cua-driver-darwin-arm64"}\n')
+    mkdirSync(join(app, 'node_modules', ...foreignCua.split('/')), { recursive: true })
+    writeFileSync(join(app, 'node_modules', ...foreignCua.split('/'), 'package.json'), `{"name":"${foreignCua}"}\n`)
   })
   const source = archivedPayload(resources)
   try {
@@ -107,7 +110,8 @@ it('reports stray root entries, policy leftovers, packed native code and packed 
       'node_modules/@deepseek-ai/dsh-agent-preset/skills/agent-experience/SKILL.md: must be unpacked beside app.asar',
       'node_modules/@deepseek-ai/dsh-skill-badge/assets/dsh-badge.png: must be unpacked beside app.asar',
       'node_modules/@deepseek-ai/dsh/index.js.map: source map must not be packaged',
-      'node_modules/@trycua/cua-driver-darwin-arm64/package.json: must be unpacked beside app.asar',
+      `node_modules/${foreignCua}/package.json: native package other platform must not be packaged`,
+      `node_modules/${foreignCua}/package.json: must be unpacked beside app.asar`,
       'node_modules/native-pkg/helper: native code is packed inside app.asar',
     ])
   } finally { source.close() }

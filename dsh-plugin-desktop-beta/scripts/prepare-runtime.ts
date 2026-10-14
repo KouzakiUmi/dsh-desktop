@@ -163,8 +163,9 @@ export function verifyDesktopRuntimeTree(runtimeRoot: string, platform: NodeJS.P
       }
     }
     const skills = officeSkillsDirectory(runtimeRoot, arch)
-    requireFile(join(skills, 'scripts', 'check_office.py'), `${arch} Office checker`)
-    for (const skill of ['office-docx', 'office-pptx', 'office-xlsx']) requireFile(join(skills, skill, 'SKILL.md'), `${arch} ${skill} skill`)
+    for (const skill of ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']) {
+      requireFile(join(skills, skill, 'SKILL.md'), `${arch} ${skill} skill`)
+    }
     verified.push({ arch, directory, manifest })
   }
   return verified

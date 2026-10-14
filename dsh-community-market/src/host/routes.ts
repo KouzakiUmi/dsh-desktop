@@ -348,6 +348,13 @@ function mutationAllowed(req: IncomingMessage, expectedPort: number): boolean {
   })
 }
 
+// Once the webServer service is ready its port is always bound; undefined only
+// appears before binding, so fail loudly instead of defaulting to a port.
+function requireBoundWebServerPort(port: number | undefined): number {
+  if (port === undefined) throw new Error('dsh-community-market: Web server port is not bound')
+  return port
+}
+
 function asMutation(value: unknown): MarketSourceMutation {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid mutation')
   const mutation = value as Record<string, unknown>
@@ -580,7 +587,7 @@ export function registerMarketRoutes(
   installProvider?: MarketInstallServiceProvider,
   desktopActionsProvider?: MarketDesktopActionsProvider,
 ): () => void {
-  const expectedPort = ctx.webServer.port
+  const expectedPort = requireBoundWebServerPort(ctx.webServer.port)
   const generationController = new AbortController()
   const store = new PersistentCatalogSourceStore(state)
   const media = createMarketMediaService({

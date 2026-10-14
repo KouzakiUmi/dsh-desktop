@@ -55,6 +55,7 @@ import {
   desktopBrowserAccessEnabled,
   desktopNetworkExposureForBrowserAccess,
   desktopWebServerHost,
+  requireBoundWebServerPort,
   type DesktopNetworkExposure,
 } from './desktop-network.ts'
 import { DESKTOP_FRAME_HEIGHT } from './window-chrome.ts'
@@ -172,7 +173,7 @@ export function apply(ctx: Context, config: DesktopShellConfig): void {
   if (ctx.webServer.host !== desktopWebServerHost(resolved.networkExposure)) {
     throw new Error('dsh-plugin-desktop: desktop shell WebServer host does not match networkExposure')
   }
-  lanHttps.attach(ctx.webServer.port)
+  lanHttps.attach(requireBoundWebServerPort(ctx.webServer.port))
   const iconFilename = runtime.platform === 'darwin'
     ? 'app-icon-mac.png'
     : 'app-icon.png'
@@ -423,7 +424,7 @@ export function apply(ctx: Context, config: DesktopShellConfig): void {
         resolved.linuxMaterial,
       )
       const url = desktopRendererUrl(
-        ctx.webServer.port,
+        requireBoundWebServerPort(ctx.webServer.port),
         resolved.mode,
         runtime.platform,
         runtime.updates.currentVersion,

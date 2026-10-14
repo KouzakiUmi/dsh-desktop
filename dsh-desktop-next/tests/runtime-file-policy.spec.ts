@@ -28,6 +28,11 @@ it('omits development artifacts while preserving executable modules, assets and 
     'node-pty/prebuilds/win32-x64/conpty.pdb',
     '@koromix/koffi-win32-x64/win32_x64/koffi.lib',
     '@mixmark-io/domino/test/entities.html',
+    '@dataiku/uv-win32-arm64/bin/uv.exe',
+    '@trycua/cua-driver-win32-arm64-msvc/cua.node',
+    '@img/sharp-win32-arm64/lib/libvips-42.dll',
+    '@koromix/koffi-win32-arm64/win32_arm64/koffi.node',
+    'lightningcss-win32-arm64-msvc/lightningcss.win32-arm64-msvc.node',
     '@deepseek-ai/libreoffice-kit-wasm/assets/soffice.data',
     '@deepseek-ai/libreoffice-kit-darwin-arm64/bin/libreoffice-kit',
     '.modules.yaml', '.pnpm-workspace-state-v1.json', '.yarn-state.yml', '.bin/tool', '.pnpm/cache',
@@ -87,13 +92,27 @@ it('retains native prebuilds and Office engines for every architecture of a univ
   expect(nextRuntimeFileExclusion('node-pty/prebuilds/win32-x64/conpty.node', universal)).toBe('node-pty other platform')
   expect(nextRuntimeFileExclusion('@deepseek-ai/libreoffice-kit-darwin-arm64/program/soffice', universal)).toBeUndefined()
   expect(nextRuntimeFileExclusion('@deepseek-ai/libreoffice-kit-darwin-x64/program/soffice', universal)).toBeUndefined()
-  expect(nextRuntimeFileExclusion('@deepseek-ai/libreoffice-kit-win32-x64/bin/libreoffice-kit.exe', universal)).toBe('LibreOffice other platform')
+  expect(nextRuntimeFileExclusion('@deepseek-ai/libreoffice-kit-win32-x64/bin/libreoffice-kit.exe', universal)).toBe('native package other platform')
   expect(nextRuntimeFileExclusion('@deepseek-ai/libreoffice-kit/lib/cli.js', universal)).toBeUndefined()
 })
 
-it('keeps every other platform file and unrecognized asset', () => {
-  for (const path of ['@trycua/cua-driver-darwin-x64/cua_driver_node_runtime.node', '@dataiku/uv-darwin-arm64/bin/uv',
-    'sherpa-onnx-darwin-x64/libonnxruntime.dylib', 'lucide-react/dist/esm/icons/a.js', 'openai/src/client.ts', 'dshmarket/package.json']) {
+it('keeps the universal macOS CPUs and drops every other native package', () => {
+  expect(nextRuntimeFileExclusion('@trycua/cua-driver-darwin-x64/cua_driver_node_runtime.node', universal)).toBeUndefined()
+  expect(nextRuntimeFileExclusion('@dataiku/uv-darwin-arm64/bin/uv', universal)).toBeUndefined()
+  expect(nextRuntimeFileExclusion('sherpa-onnx-darwin-x64/libonnxruntime.dylib', universal)).toBeUndefined()
+  expect(nextRuntimeFileExclusion('@dataiku/uv-win32-arm64/bin/uv.exe', universal)).toBe('native package other platform')
+  expect(nextRuntimeFileExclusion('@img/sharp-linux-x64/lib/libvips.so', universal)).toBe('native package other platform')
+  for (const path of ['lucide-react/dist/esm/icons/a.js', 'openai/src/client.ts', 'dshmarket/package.json']) {
     expect(nextRuntimeFileExclusion(path, universal), path).toBeUndefined()
+  }
+})
+
+it('keeps only the current Windows CPU and drops other native packages', () => {
+  expect(nextRuntimeFileExclusion('@dataiku/uv-win32-x64/bin/uv.exe', windows)).toBeUndefined()
+  expect(nextRuntimeFileExclusion('@koromix/koffi-win32-x64/win32_x64/koffi.node', windows)).toBeUndefined()
+  for (const path of ['@dataiku/uv-win32-arm64/bin/uv.exe', '@trycua/cua-driver-win32-arm64-msvc/cua.node',
+    '@img/sharp-win32-arm64/lib/libvips-42.dll', '@img/sharp-darwin-x64/lib/libvips.dylib',
+    'lightningcss-linux-x64-gnu/lightningcss.linux-x64-gnu.node']) {
+    expect(nextRuntimeFileExclusion(path, windows), path).toBe('native package other platform')
   }
 })

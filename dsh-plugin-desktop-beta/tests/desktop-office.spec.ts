@@ -1,7 +1,7 @@
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -54,12 +54,11 @@ it('loads Office skills with the bundled Node and the installed CLI, and removes
     await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(config).href } })
     await ctx.loader.await()
     for (const entry of ctx.loader.entries()) await entry.fiber?.await()
-    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['office-docx', 'office-pptx', 'office-xlsx'])
-    expect((await ctx.skills.get('office-pptx'))?.resourceBase).toEqual({ kind: 'directory', path: join(assets, 'office-pptx') })
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx'])
+    expect((await ctx.skills.get('office-pptx'))?.resourceBase).toEqual({ kind: 'directory', path: join(assets, 'office-pptx').split(sep).join('/') })
     const content = (await ctx.skills.get('office-pptx'))?.content ?? ''
-    expect(content).toContain('libreofficeKit')
-    expect(content).toContain(JSON.stringify(join(nodeDirectory, nodeName)).slice(1, -1))
-    expect(content).toContain(JSON.stringify(join(dirname(require.resolve('@deepseek-ai/libreoffice-kit/package.json')), 'lib', 'cli.js')).slice(1, -1))
+    expect(content).toContain('office-render')
+    expect(content).not.toContain(nodeDirectory)
     expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(['load_workspace_dependencies'])
     const entry = [...ctx.loader.entries()].find(entry => entry.options.name === 'office')
     expect(entry).toBeDefined()

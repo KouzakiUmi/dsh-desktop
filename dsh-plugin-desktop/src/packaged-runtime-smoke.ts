@@ -18,6 +18,9 @@ import { rgPath } from '@vscode/ripgrep'
 import AdmZip from 'adm-zip'
 import { exportDiagnosticsZip } from './diagnostic-export.ts'
 import { installProfilePackageResolver } from './module-resolution.ts'
+// The abstract persistence seam augments Context with `sessionPersistence`; importing it keeps the augmentation visible.
+import type {} from '@deepseek-ai/dsh-session-persistence'
+import type { Plugin } from '@deepseek-ai/cordis'
 
 const OK_MARKER = 'DSH_PACKAGED_RUNTIME_OK'
 
@@ -43,9 +46,10 @@ assert(existsSync(rgPath), `cannot find ripgrep at ${rgPath}`)
 const rgVersion = execFileSync(rgPath, ['--version'], { encoding: 'utf8', windowsHide: true })
 assert(/^ripgrep\s/u.test(rgVersion), `received an invalid ripgrep version: ${JSON.stringify(rgVersion.trim())}`)
 if (process.platform === 'win32') {
-  const sessionBackend = await import('@deepseek-ai/dsh-session-persistence-jsonl')
+  // The backend is a default class plugin before 0.2.1-alpha and a named function plugin afterwards.
+  const sessionBackend: { readonly apply?: unknown; readonly default?: unknown } = await import('@deepseek-ai/dsh-session-persistence-jsonl')
   assert(
-    typeof sessionBackend.default === 'function',
+    typeof sessionBackend.apply === 'function' || typeof sessionBackend.default === 'function',
     'could not import the Windows JSONL session backend without fs-ext',
   )
 } else {
@@ -57,7 +61,9 @@ if (process.platform === 'win32') {
 async function smokeSessionMigration(): Promise<void> {
   const { Context } = await import('@deepseek-ai/cordis')
   const { SessionId } = await import('@deepseek-ai/dsh-session')
-  const { default: JsonlSessionPersistence } = await import('@deepseek-ai/dsh-session-persistence-jsonl')
+  // The backend is a default class plugin before 0.2.1-alpha and a named function plugin afterwards.
+  const sessionBackend: { readonly apply?: Plugin; readonly default?: Plugin } = await import('@deepseek-ai/dsh-session-persistence-jsonl')
+  const JsonlSessionPersistence = sessionBackend.apply ?? sessionBackend.default
   const root = mkdtempSync(join(tmpdir(), 'dsh-packaged-session-migration-'))
   const id = SessionId('packaged-migration')
   const directory = join(root, '_no-cwd', id)
@@ -69,6 +75,7 @@ async function smokeSessionMigration(): Promise<void> {
   try {
     mkdirSync(directory, { recursive: true })
     writeFileSync(join(directory, 'session.v2.jsonl'), source)
+    assert(JsonlSessionPersistence !== undefined, 'could not import the JSONL session backend')
     await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
     const handle = await ctx.sessionPersistence.open(id, 'write')
     try {

@@ -32,7 +32,7 @@ function writePayload(runtimeRoot: string, arch: NextRuntimeArch, options: Paylo
     writeFileSync(join(directory, path), content)
   }
   const skills = officeSkillsDirectory(runtimeRoot, arch)
-  for (const path of ['scripts/check_office.py', 'office-docx/SKILL.md', 'office-pptx/SKILL.md', 'office-xlsx/SKILL.md']) {
+  for (const path of ['office/SKILL.md', 'office-docx/SKILL.md', 'office-export-pdf/SKILL.md', 'office-pptx/SKILL.md', 'office-recalculate/SKILL.md', 'office-render/SKILL.md', 'office-xlsx/SKILL.md']) {
     if (options.omit?.includes(`office-skills/${path}`)) continue
     mkdirSync(join(skills, path, '..'), { recursive: true })
     writeFileSync(join(skills, path), '')
@@ -103,8 +103,8 @@ it('rejects missing entry points and Office resources', () => {
   expect(() => verifyNextRuntimeTree(python, 'darwin', '2.0.0-next')).toThrow('missing arm64 Python interpreter')
   const checker = fixture()
   writePayload(checker, 'arm64')
-  writePayload(checker, 'x64', { omit: ['office-skills/scripts/check_office.py'] })
-  expect(() => verifyNextRuntimeTree(checker, 'darwin', '2.0.0-next')).toThrow('missing x64 Office checker')
+  writePayload(checker, 'x64', { omit: ['office-skills/office-render/SKILL.md'] })
+  expect(() => verifyNextRuntimeTree(checker, 'darwin', '2.0.0-next')).toThrow('missing x64 office-render skill')
   const skill = fixture()
   writePayload(skill, 'arm64', { omit: ['office-skills/office-xlsx/SKILL.md'] })
   expect(() => verifyNextRuntimeTree(skill, 'darwin', '2.0.0-next')).toThrow('missing arm64 office-xlsx skill')

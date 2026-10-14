@@ -70,6 +70,7 @@ import { observeDesktopPreferenceSettings } from './settings-bridge.ts'
 import {
   desktopLanBrowserUrls,
   desktopLoopbackBrowserUrl,
+  requireBoundWebServerPort,
 } from './desktop-network.ts'
 import { desktopLanAddresses } from './lan-addresses.ts'
 import {
@@ -1817,7 +1818,7 @@ async function start(): Promise<void> {
                 : []
               return {
                 localUrl: hostCtx.connection.authenticatedUrl(
-                  desktopLoopbackBrowserUrl(hostCtx.webServer.port),
+                  desktopLoopbackBrowserUrl(requireBoundWebServerPort(hostCtx.webServer.port)),
                 ),
                 lanUrls: lanOrigins.map(url => hostCtx.connection.authenticatedUrl(url)),
                 lanState: lan.state,

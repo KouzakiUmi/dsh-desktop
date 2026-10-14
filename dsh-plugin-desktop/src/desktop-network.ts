@@ -65,6 +65,14 @@ export function desktopWebServerHost(_exposure: DesktopNetworkExposure): WebServ
   return '127.0.0.1'
 }
 
+/** Fail loudly instead of silently defaulting when the WebServer has no bound port. */
+export function requireBoundWebServerPort(port: number | undefined): number {
+  if (port === undefined) {
+    throw new Error('dsh-plugin-desktop: WebServer has no bound port')
+  }
+  return port
+}
+
 /** Marker-free URL suitable for an ordinary local browser. */
 export function desktopLoopbackBrowserUrl(port: number): string {
   return `http://127.0.0.1:${String(port)}/`

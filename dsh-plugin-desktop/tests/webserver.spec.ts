@@ -7,6 +7,7 @@ import {
   type DesktopBrowserAccess,
 } from '../src/desktop-browser-access.ts'
 import { DESKTOP_WEB_PORT_RETRY_LIMIT } from '../src/desktop-port.ts'
+import { requireBoundWebServerPort } from '../src/desktop-network.ts'
 import { configureDeveloperLogging, initializeDeveloperLogging } from '../src/developer-logging.ts'
 import DesktopWebServer from '../src/webserver.ts'
 
@@ -169,8 +170,8 @@ describe('Desktop WebServer browser gate', () => {
       },
     })
 
-    await expect(requestUpgrade(server.port, '/socket')).resolves.toContain('403 Forbidden')
-    await expect(requestUpgrade(server.port, '/socket', {
+    await expect(requestUpgrade(requireBoundWebServerPort(server.port), '/socket')).resolves.toContain('403 Forbidden')
+    await expect(requestUpgrade(requireBoundWebServerPort(server.port), '/socket', {
       [access.rendererHeader.name]: access.rendererHeader.value,
     })).resolves.toContain('101 Switching Protocols')
   })
