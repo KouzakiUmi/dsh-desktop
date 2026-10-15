@@ -100,6 +100,9 @@ jobs:
       - name: Verify Next Profile onboarding without a Host
         if: needs.changes.outputs.product == 'true'
         run: yarn workspace dsh-desktop-next verify:onboarding
+      - name: Verify native builtin access in the real Electron main process
+        if: needs.changes.outputs.product == 'true'
+        run: yarn workspace dsh-desktop-next verify:native-builtins
       - name: Verify Next native protocol mutations in Electron
         if: needs.changes.outputs.product == 'true'
         run: yarn workspace dsh-desktop-next verify:protocol

@@ -9,9 +9,10 @@ const modes = new Map([
   ['protocol', { script: 'verify-protocol.mjs', prefix: 'protocol-', args: [] }],
   ['sidebar-browser', { script: 'verify-sidebar-browser.mjs', prefix: 'sidebar-browser-', args: [] }],
   ['plugin-frames', { script: 'verify-protocol.mjs', prefix: 'plugin-frames-', args: ['--plugin-frames'] }],
+  ['native-builtins', { script: 'verify-native-builtins.mjs', prefix: 'native-builtins-', args: [] }],
 ])
 const mode = modes.get(process.argv[2])
-if (!mode) throw new Error('Expected protocol, sidebar-browser or plugin-frames')
+if (!mode) throw new Error(`Expected one of: ${[...modes.keys()].join(', ')}`)
 requireWindowsX64('Native Electron verification')
 const home = createVerificationHome(mode.prefix)
 const env = { ...process.env }

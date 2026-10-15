@@ -5,8 +5,8 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cleanupDisposableTree } from '../lib/disposable-tree.js'
 
-/** Checkout-local parent of the gates' atomically allocated private directories. */
-export const VERIFICATION_ROOT = join(realpathSync(fileURLToPath(new URL('..', import.meta.url))), '.desktop-build', 'verification')
+/** Checkout-local fixture directories outside the installed application tree. */
+export const VERIFICATION_ROOT = join(realpathSync(fileURLToPath(new URL('../..', import.meta.url))), '.desktop-build', 'verification')
 
 /** Refuse a host the Windows x64 product does not ship. */
 export function requireWindowsX64(subject) {

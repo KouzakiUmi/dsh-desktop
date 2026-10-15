@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "package": "node-addon-require-builtin-win32-x64-msvc",
+  "version": "0.1.9-desktop.e4472",
+  "artifact": "node-addon-require-builtin-win32-x64-msvc-0.1.9-desktop.e4472.tgz",
+  "sha256": "5ebe986cdcf320455b821e75ca4d7116e4160a5ceeb982402d118c9c51f4363a",
+  "source": {
+    "repository": "https://github.com/deepseek-ai/dsh-node-addon-require-builtin",
+    "commit": "a58d3599a2e551d7d706d1ff796c9fd4bbaff63c",
+    "patch": "patches/node-addon-require-builtin@0.1.9-electron44.7.2.patch",
+    "patchSha256": "1c6a2d2d67f2b1e4e9414fc74c7a4fb419cfe7db820da11aabda5b4a0fa40d1c"
+  },
+  "target": {
+    "os": "win32",
+    "cpu": "x64",
+    "backend": "napi",
+    "abi": "napi-v9"
+  },
+  "runtime": {
+    "electron": "44.7.2",
+    "node": "24.21.0",
+    "v8": "15.2.124.37-electron.0"
+  },
+  "binarySha256": "6088a3cacc3ecd0ce53343bf118d84ad70c966342af636687c91f15248fe5cf8",
+  "verification": {
+    "ordinaryNodeBackend": "24.13.0 passed",
+    "electronNodeModeBackend": "44.7.2 passed",
+    "runtimeProfilePositiveAndNegativeCases": "passed",
+    "electronMainProcess": "pending Windows CI"
+  }
+}

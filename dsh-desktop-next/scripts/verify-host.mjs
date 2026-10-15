@@ -1,8 +1,10 @@
 /** Exercise the actual 0.2.1-alpha.3 Host, credentials, Market routes and AA manifest without Electron UI. */
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { cleanupDisposableTree } from '../lib/disposable-tree.js'
+import { createRequire } from 'node:module'
+import { createVerificationHome, removeVerificationHome } from './verification-scratch.mjs'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DesktopHostProcess } from '../lib/host-process.js'
@@ -14,7 +16,15 @@ import { startRecentRegistry } from './fixtures/recent-registry.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const home = mkdtempSync(join(tmpdir(), 'dsh-next-host-'))
+const electronMode = process.argv.includes('--electron')
+const home = electronMode ? createVerificationHome('host-') : mkdtempSync(join(tmpdir(), 'dsh-next-host-'))
+if (electronMode) {
+  const temporary = join(home, 'tmp')
+  mkdirSync(temporary)
+  process.env.TEMP = temporary
+  process.env.TMP = temporary
+  process.env.NARB_NATIVE_CACHE_DIR = join(home, 'native-cache')
+}
 const manager = new NextProfiles(home)
 const executable = process.argv.includes('--electron') ? createRequire(import.meta.url)('electron') : process.execPath
 let host
@@ -379,5 +389,6 @@ export function apply(ctx) {
   await runner?.dispose()
   await host?.stop()
   await registry?.stop()
-  rmSync(home, { recursive: true, force: true })
+  if (electronMode) removeVerificationHome(home, 'host-')
+  else cleanupDisposableTree(home)
 }

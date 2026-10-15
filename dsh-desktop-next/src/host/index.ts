@@ -22,6 +22,7 @@ import { installAgentPresetResolution } from './agent-preset.ts'
 import { installCuaDriverResolution } from './cua-driver.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { installSkillBadgeResolution } from './skill-badge.ts'
+import { installOwnPackageResolution } from './own-package.ts'
 import * as desktopOffice from './office.ts'
 import { resolveOfficeConfig } from './office.ts'
 
@@ -33,6 +34,7 @@ export async function main(): Promise<void> {
   const primaryRuntime = process.argv[4]
   const home = process.env.DSH_HOME
   if (!runtimeDir || !projectDir || !home || !process.send) throw new Error('Next Host requires runtime, profile, home and IPC')
+  installOwnPackageResolution(runtimeDir)
   // The Office engine runs as a native child process, so an archived payload resolves it to its unpacked copy.
   installOfficeEngineResolution(runtimeDir)
   // The Creator preset reads its skills through the Host's filesystem service, which cannot stat inside the archive.

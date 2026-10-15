@@ -21,6 +21,7 @@
     "verify:protocol": "node scripts/verify-native.mjs protocol",
     "verify:plugin-frames": "node scripts/verify-native.mjs plugin-frames",
     "verify:sidebar-browser": "node scripts/verify-native.mjs sidebar-browser",
+    "verify:native-builtins": "node scripts/verify-native.mjs native-builtins",
     "check": "yarn build && yarn typecheck && yarn test && yarn verify:frontend && yarn verify:host && yarn verify:desktop-runtime && yarn verify:safe-cleanup",
     "dev": "yarn build && yarn prepare:runtime && node scripts/start.mjs",
     "start": "yarn prepare:runtime && node scripts/start.mjs",

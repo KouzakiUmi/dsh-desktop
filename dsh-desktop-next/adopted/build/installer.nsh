@@ -75,7 +75,8 @@ Var pid
 !macro customInstallMode
   !ifndef BUILD_UNINSTALLER
     ${if} ${isUpdated}
-      !insertmacro customCheckAppRunning
+      ; The builder wrapper declares and initializes CmdPath and PowerShellPath.
+      !insertmacro CHECK_APP_RUNNING
       ${if} $hasPerMachineInstallation == "1"
       ${andIf} $hasPerUserInstallation == "0"
         StrCpy $isForceMachineInstall "1"

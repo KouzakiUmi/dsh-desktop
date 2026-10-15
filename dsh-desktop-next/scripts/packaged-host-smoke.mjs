@@ -1,26 +1,29 @@
 /** Boot the real Host from one packaged Next archive and stop it; no window, no user data. */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
+import { createVerificationHome, removeVerificationHome } from './verification-scratch.mjs'
 
 const BADGE_BUNDLE = '@deepseek-ai/dsh-experimental-badge-skill-bundle'
 
-/** System temp is not writable from the packaged Electron child on some Windows hosts. */
-function writableSmokeHome(prefix) {
-  try {
-    return mkdtempSync(join(tmpdir(), prefix))
-  } catch (error) {
-    if (error?.code !== 'EPERM') throw error
-    const fallback = join(dirname(fileURLToPath(import.meta.url)), '..', '.pack-temp')
-    mkdirSync(fallback, { recursive: true })
-    return mkdtempSync(join(fallback, prefix))
-  }
-}
+const HOME_PREFIX = 'dsh-next-packaged-smoke-'
 const root = process.argv[2]
 if (!root) throw new Error('packaged-host-smoke: expected the packaged application root')
+const native = JSON.parse(readFileSync(new URL('../../vendor/node-addon-runtime/provenance.json', import.meta.url), 'utf8'))
+const nativeManifest = JSON.parse(readFileSync(join(root, 'node_modules', native.package, 'package.json'), 'utf8'))
+assert.equal(nativeManifest.version, native.version, 'Packaged native accessor version')
+const binary = join(root + '.unpacked', 'node_modules', native.package, 'prebuilt', 'win32-x64-msvc-napi-v9.node')
+assert.equal(createHash('sha256').update(readFileSync(binary)).digest('hex'), native.binarySha256, 'Packaged native accessor binary')
+assert.deepEqual({ electron: process.versions.electron, node: process.versions.node, v8: process.versions.v8 }, native.runtime, 'Packaged runtime fingerprint')
+const home = createVerificationHome(HOME_PREFIX)
+const temporary = join(home, 'tmp')
+mkdirSync(temporary)
+process.env.TEMP = temporary
+process.env.TMP = temporary
+process.env.NARB_NATIVE_CACHE_DIR = join(home, 'native-cache')
 const { NextDesktopRuntime } = await import(pathToFileURL(join(root, 'lib', 'desktop-runtime.js')).href)
-const home = writableSmokeHome('dsh-next-packaged-smoke-')
 let failures = 0
 // The payload of this CPU sits beside the archive, where the packaged shell selects it.
 const runtime = new NextDesktopRuntime({ root, home, primaryRuntime: join(dirname(root), 'runtime', process.arch, 'primary-runtime'), executable: process.execPath, addresses: () => [],
@@ -59,5 +62,5 @@ try {
   console.log(`Packaged Next Host booted from ${root}: profile ${state.selected}, loopback ${new URL(auth.url).origin}, diagnostics export ok`)
 } finally {
   await runtime.close()
-  rmSync(home, { recursive: true, force: true })
+  removeVerificationHome(home, HOME_PREFIX)
 }

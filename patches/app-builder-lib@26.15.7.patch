@@ -32,7 +32,24 @@ diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/template
 index b32bafafac67d1e2ba6d867fb97865f67766a17e..77b621c83ccbd51392f292c989fbb249c76aa243 100644
 --- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
 +++ b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
-@@ -64,6 +64,6 @@
+@@ -32,6 +32,9 @@
+ !macro CHECK_APP_RUNNING
++  !ifndef DSH_PROCESS_PATHS_DECLARED
++    !define DSH_PROCESS_PATHS_DECLARED
+   Var /GLOBAL CmdPath
+   Var /GLOBAL PowerShellPath
++  !endif
+   StrCpy $CmdPath "$SYSDIR\cmd.exe"
+   StrCpy $PowerShellPath "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+   !ifmacrodef customCheckAppRunning
+@@ -45,3 +48,6 @@
+ !macro IS_POWERSHELL_AVAILABLE
++  !ifndef DSH_POWERSHELL_STATUS_DECLARED
++    !define DSH_POWERSHELL_STATUS_DECLARED
+   Var /GLOBAL IsPowerShellAvailable ; 0 = available, 1 = not available
++  !endif
+   # Try running PowerShell with a simple command to check if it's available
+@@ -64,6 +70,6 @@
  !macro FIND_PROCESS _FILE _RETURN
    ${if} $IsPowerShellAvailable == 0
 -    nsExec::Exec `"$PowerShellPath" -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
@@ -40,7 +57,7 @@ index b32bafafac67d1e2ba6d867fb97865f67766a17e..77b621c83ccbd51392f292c989fbb249
      Pop ${_RETURN}
    ${else}
      !ifdef INSTALL_MODE_PER_ALL_USERS
-@@ -93,5 +93,5 @@
+@@ -93,5 +99,5 @@
    ${if} $IsPowerShellAvailable == 0
 -    nsExec::Exec `"$PowerShellPath" -C "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId $0 }"`
 +    nsExec::Exec `"$PowerShellPath" -C "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and [System.IO.Path]::GetFileName($$_.Path) -ieq '${_FILE}'} | % { Stop-Process -Id $$_.ProcessId $0 }"`

@@ -8727,7 +8727,7 @@ __metadata:
 
 "app-builder-lib@patch:app-builder-lib@npm%3A26.15.7#./patches/app-builder-lib@26.15.7.patch::locator=deepseek-harness-desktop%40workspace%3A.":
   version: 26.15.7
-  resolution: "app-builder-lib@patch:app-builder-lib@npm%3A26.15.7#./patches/app-builder-lib@26.15.7.patch::version=26.15.7&hash=5ac45c&locator=deepseek-harness-desktop%40workspace%3A."
+  resolution: "app-builder-lib@patch:app-builder-lib@npm%3A26.15.7#./patches/app-builder-lib@26.15.7.patch::version=26.15.7&hash=e16ab1&locator=deepseek-harness-desktop%40workspace%3A."
   dependencies:
     "@electron/asar": "npm:3.4.1"
     "@electron/fuses": "npm:^1.8.0"
@@ -8773,7 +8773,7 @@ __metadata:
   peerDependencies:
     dmg-builder: 26.15.7
     electron-builder-squirrel-windows: 26.15.7
-  checksum: 10c0/4788979599b280fc8b2adea3facf3d8fc76b6b662ab8e228fdbd2fc089a9c3f7bafa4a2e96c7a1bebd19c9ae7f1443dd0b97b9f1b3092a9b59d0caa87a64c806
+  checksum: 10c0/575311f0835964ae7f35b7fc0778d1d29e5c08d39d882b3b6a87dcd07daf0844e8afd67598bd9d6814f7002109b090ff3c6c0b8ee76b241e2c4b3b98e1f5682a
   languageName: node
   linkType: hard
 
@@ -12790,9 +12790,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-addon-require-builtin-win32-x64-msvc@npm:0.1.9":
-  version: 0.1.9
-  resolution: "node-addon-require-builtin-win32-x64-msvc@npm:0.1.9"
+"node-addon-require-builtin-win32-x64-msvc@file:vendor/node-addon-runtime/node-addon-require-builtin-win32-x64-msvc-0.1.9-desktop.e4472.tgz::locator=deepseek-harness-desktop%40workspace%3A.":
+  version: 0.1.9-desktop.e4472
+  resolution: "node-addon-require-builtin-win32-x64-msvc@file:vendor/node-addon-runtime/node-addon-require-builtin-win32-x64-msvc-0.1.9-desktop.e4472.tgz#vendor/node-addon-runtime/node-addon-require-builtin-win32-x64-msvc-0.1.9-desktop.e4472.tgz::hash=ba3f98&locator=deepseek-harness-desktop%40workspace%3A."
   dependencies:
     node-addon-native-custom-loader: "npm:0.1.9"
   conditions: os=win32 & cpu=x64

@@ -1,0 +1,90 @@
+diff --git a/docs/support-matrix.md b/docs/support-matrix.md
+index 3a7342f..bcf8c8a 100644
+--- a/docs/support-matrix.md
++++ b/docs/support-matrix.md
+@@ -44,6 +44,14 @@ ia32 runs the official 32-bit Electron under WoW64, matching the existing Node
+ ia32 prebuild workflow. Other Electron versions are rejected by the runtime
+ profile until separately analyzed and added to CI.
+ 
++The Desktop-local adaptation additionally compiles the exact Electron 44.7.2
++fingerprint (Node 24.21.0, V8 15.2.124.37-electron.0) on Windows x64 only.
++Its `require-builtin` N-API v9 binary passes ordinary Node and real Electron
++Node-mode backend tests, including real CJS/ESM/Realm access. Exact-fingerprint
++positive and negative cases also pass. Real main-process verification remains
++pending in Desktop Windows CI; this is not a supported cell in the table above,
++not an npm release, and not a claim for `internal-loader` or other platforms.
++
+ ## Platform x Node Matrix
+ 
+ Both product families publish the same supported optional prebuild package
+diff --git a/package.json b/package.json
+index d3520d1..d381a25 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,7 @@
+   "private": true,
+   "type": "commonjs",
+   "license": "MIT",
+-  "packageManager": "pnpm@9.15.9",
++  "packageManager": "pnpm@11.28.5",
+   "scripts": {
+     "headers": "tsx ./scripts/prepare-nodeabi-headers.ts",
+     "build": "pnpm build:ts && pnpm build:native:napi",
+diff --git a/packages/native/src/runtime_context/runtime_profile.cc b/packages/native/src/runtime_context/runtime_profile.cc
+index 32399fb..ba7ca54 100644
+--- a/packages/native/src/runtime_context/runtime_profile.cc
++++ b/packages/native/src/runtime_context/runtime_profile.cc
+@@ -17,13 +17,23 @@ struct ElectronProfileSpec {
+   const char* diagnostic_name;
+ };
+ 
+-constexpr std::array<ElectronProfileSpec, 4> kElectronProfiles = {{
++#if defined(_WIN32) && defined(_M_X64)
++constexpr unsigned kElectronProfileCount = 5;
++#else
++constexpr unsigned kElectronProfileCount = 4;
++#endif
++
++constexpr std::array<ElectronProfileSpec, kElectronProfileCount> kElectronProfiles = {{
+     {"43.0.0", 24, 17, 0, "15.0.245.13-electron.0",
+      "electron-43 tagged default=0"},
+     {"44.0.0", 24, 18, 1, "15.2.124.13-electron.0",
+      "electron-44 tagged default=0"},
+     {"44.7.0", 24, 21, 0, "15.2.124.28-electron.0",
+      "electron-44.7 tagged default=0"},
++#if defined(_WIN32) && defined(_M_X64)
++    {"44.7.2", 24, 21, 0, "15.2.124.37-electron.0",
++     "electron-44.7.2 win32-x64 tagged default=0"},
++#endif
+     {"45.0.0-alpha.6", 24, 21, 0, "15.4.80-electron.0",
+      "electron-45-alpha tagged default=0"},
+ }};
+diff --git a/test/runtime_profile_selftest.cc b/test/runtime_profile_selftest.cc
+index e2f3a5d..52aac48 100644
+--- a/test/runtime_profile_selftest.cc
++++ b/test/runtime_profile_selftest.cc
+@@ -184,6 +184,24 @@ int main() {
+       narb::EmbedderDataAbi::kTagged,
+       0,
+       "electron-44.7 tagged default=0");
++#if defined(_WIN32) && defined(_M_X64)
++  ExpectProfile(
++      "Electron 44.7.2 Windows x64 native fingerprint",
++      {24, 21, 0, "15.2.124.37-electron.0"},
++      narb::EmbedderDataAbi::kTagged,
++      0,
++      "electron-44.7.2 win32-x64 tagged default=0");
++#else
++  ExpectUnsupported(
++      "Electron 44.7.2 is not validated outside Windows x64",
++      {24, 21, 0, "15.2.124.37-electron.0"});
++#endif
++  ExpectUnsupported(
++      "Electron 44.7.2 V8 with wrong native Node version",
++      {24, 21, 1, "15.2.124.37-electron.0"});
++  ExpectUnsupported(
++      "Electron 44.7.2 Node with unknown V8 version",
++      {24, 21, 0, "15.2.124.38-electron.0"});
+   ExpectProfile(
+       "Electron 45 native fingerprint",
+       {24, 21, 0, "15.4.80-electron.0"},

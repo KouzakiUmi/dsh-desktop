@@ -25,9 +25,11 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 | 美元价格与公式 | [Core currencyAwareMath](https://github.com/KouzakiUmi/deepseek-harness/blob/f43a201de78c2926820a6670bbb8b653a39b0308/packages/client/ui-primitives/src/markdown/currencyAwareMath.ts) 与对应 parser、单测、真实消息渲染测试一并保留。价格、CJK、`between $5 and $10 (see $x$)` 不应吞成公式；`$x$`、`$2+2$`、带合法 padding 的公式及块公式仍须可用。不能以禁用数学渲染替代修复。 |
 | ZIP 调用面安全 | Windows Node、Python wheel 等下载解压前校验归档来源与摘要，并在 entry 回调拒绝 symlink、设备及其它特殊 Unix 文件类型。Unix mode 位是归档安全元数据，不是可删的 macOS/Linux 产品支持代码。保留真正恶意 ZIP 的负向测试。 |
 | 目录别名安全清理 | [disposable-tree.ts](<../dsh-desktop-next/adopted/src/disposable-tree.ts>) 不只信任 `lstat().isSymbolicLink()`：用 native realpath 比较条目和其真实父目录下的预期位置；目录别名只移除入口，不递归目标。普通 realpath 不能替代 native 版本；Windows 比较使用 `path.relative` 的大小写语义。 |
-| 更新 UX 与退出握手 | [updates.ts](<../dsh-desktop-next/src/updates.ts>) 保持错误可见、失败 cache 初始化可重试、成功后不反复扫描；通知去重不等于自动安装。[installer.nsh](<../dsh-desktop-next/adopted/build/installer.nsh>) 保持可见安装和显式重启，per-machine 更新必须在 UAC 交接前等待旧应用退出，不得改回静默 `/S` 或只依赖提权内层检查。 |
+| 更新 UX 与退出握手 | [updates.ts](<../dsh-desktop-next/src/updates.ts>) 保持错误可见、失败 cache 初始化可重试、成功后不反复扫描；通知去重不等于自动安装。[installer.nsh](<../dsh-desktop-next/adopted/build/installer.nsh>) 保持可见安装和显式重启，per-machine 更新必须在 UAC 交接前等待旧应用退出，不得改回静默 `/S` 或只依赖提权内层检查。调用 `CHECK_APP_RUNNING` 包装宏初始化进程路径，不直接调用自定义检查；[builder 补丁](<../patches/app-builder-lib@26.15.7.patch>) 的一次声明守卫允许初始化阶段和安装 Section 重复展开，避免未知变量或重复声明。 |
 | pnpm 发布年龄兼容 | [pnpm 补丁](<../patches/pnpm@11.28.5.patch>) 跟随当前 pnpm 代码重新定位，不直接套旧 11.8 构建。数字和数字字符串的零值行为一致，正值年龄仍生效；[兼容测试](<../scripts/pnpm-release-age.test.mjs>) 检查真实安装代码，不能通过关闭年龄策略或放宽信任策略来过关。解释器 smoke 在随包 pnpm 自己的目录运行，不继承外层 Yarn 工程的 cwd，也不关闭 package-manager 校验。 |
 | Inspector 与 Electron 适配 | 活动补丁以 [root resolutions](<../package.json>) 和实际安装图为准，而非整个补丁目录。Inspector 构建 chunk 改名后重新定位 Reload DevTools 的 embedder callback，并保留 `test:inspector-compat`。其余 Windows/Electron 补丁逐个比较上游是否已修复，不能批量覆盖或删除。 |
+| Electron 内建访问模块 | [本地原生产物来源](<../vendor/node-addon-runtime/provenance.json>) 与[精确指纹补丁](<../patches/node-addon-require-builtin@0.1.9-electron44.7.2.patch>) 只替换 Win x64 平台包；entry/JS loader 保持原版本，不新增其它平台包。44.7.2 的 Node/V8 元组来自真实运行时，保留机器码解析、指针验证及未知元组拒绝；不能只放宽白名单或猜偏移。普通 Node、Electron Node-mode 与真实 Electron 主进程分别验证；正式上游支持并实测后退休本地替代。 |
+| ASAR 自身包解析 | [Host 自身包解析](<../dsh-desktop-next/src/host/own-package.ts>) 只把安装包自己已声明的 file/default exports 映射为包内 URL；其它包仍走既有链，不复制应用到 Profile、不导出私有子路径。源码目录能被普通 Node 找到不能替代真实封装 Host 验证。 |
 | AA 桥接 | [Connector 补丁](<../patches/agents-anywhere-connector-httpx.patch>) 保留子进程 httpx 的裸 IPv6 bypass、父环境隔离、Connector 日志与 JSON 传输后一致的内容哈希。[AA policy](<../scripts/agents-anywhere-release-policy.mjs>) 统一维护五个 runtime peers，包含 Cordis/Schemastery；不要再在补丁里硬编码另一套旧 peer 范围。当前 Gateway 的事件订阅和回复必须使用同一个受 Context 生命周期管理的真实 Peer，不能传 undefined、借用浏览器 Peer 或靠函数 arity 猜测兼容。 |
 
 升级依赖以当前同主版本安全修复为优先；必须区分生产图、开发图、临时 AA staging 图和已打包客户端代码。当前交付图中的 extract-zip 2.0.1 仍有 [GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) 与 [GHSA-7pqw-9j4j-h8q3](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3)：调用面防护不等于公告消失。不要排除包、忽略 advisory 或把弃用提示混同为漏洞清零。
@@ -62,6 +64,8 @@ corepack yarn install
 6. 运行 `corepack yarn market:prepare` 与 `corepack yarn aa:prepare-release`，同步精确依赖、兼容补丁、产物、来源记录和锁文件。AA 必须来自当前官方 main，不能用旧缓存、离线回退或 `DSH_AA_SOURCE_REF=pinned` 冒充新构建。重建改变 bundle 布局时，按新包实际代码重定位补丁。
 7. Core pin 变化后，先暂存 gitlink 再执行 `check:layout`；该门禁同时检查工作区和 index。不能因 index 还停在旧 SHA 就放宽 pin 检查。
 8. 重新准备 NEXT 载荷与解释器再打包；旧的 `.desktop-build` 不是验收证据。根级 `package:dir:next` / `dist:win:next` 会执行各自的准备流程；生成目录不提交，精确版本、锁文件、vendor 和必要源变更一起提交。
+
+9. Electron 升级必须同时核对原生内建访问模块。按原生产物记录固定官方源码提交、应用对应补丁，用已有 MSVC 与公共 Node 头文件仅构建 `require-builtin` / `napi-v9` / `win32-x64-msvc`。普通 Node 与真实 Electron Node-mode 的 `backend.test.js`、精确指纹正反例均须实测；主进程由 `verify:native-builtins` 单独验证。仅将该平台包复制到临时 staging，设置明确的 Desktop 预发布版本、把 `workspace:*` 依赖落地为已使用的 loader 版本并保留 MIT 许可后单包打包；不要调用强制全矩阵的正式发布脚本。归档、源码补丁、来源/二进制摘要、root resolution 与锁文件一起同步，不能只替换 node_modules 内的二进制。
 
 ## 5. 回归验收矩阵
 

@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 const script = readFileSync(fileURLToPath(new URL('../adopted/build/installer.nsh', import.meta.url)), 'utf8')
 
 /** One macro body, so an assertion cannot be satisfied by text from a neighbouring macro. */
-function macroBody(name: string): string {
-  const body = new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`, 'u').exec(script)?.[1]
+function macroBody(name: string, source = script): string {
+  const body = new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`, 'u').exec(source)?.[1]
   if (body === undefined) throw new Error(`installer.nsh: macro ${name} is missing`)
   return body
 }
@@ -20,13 +20,24 @@ describe('Windows NSIS running-app handoff', () => {
     expect(script).not.toContain('getProcessInfo.nsh')
   })
 
+  it('initializes process paths on every check but declares shared NSIS variables only once', () => {
+    const template = readFileSync(new URL('../node_modules/app-builder-lib/templates/nsis/include/allowOnlyOneInstallerInstance.nsh', import.meta.url), 'utf8')
+    const check = macroBody('CHECK_APP_RUNNING', template)
+    expect(check).toMatch(/!ifndef DSH_PROCESS_PATHS_DECLARED[\s\S]*Var \/GLOBAL CmdPath[\s\S]*Var \/GLOBAL PowerShellPath[\s\S]*!endif/u)
+    const initialize = check.indexOf('StrCpy $PowerShellPath')
+    expect(initialize).toBeGreaterThanOrEqual(0)
+    expect(check.indexOf('!insertmacro customCheckAppRunning')).toBeGreaterThan(initialize)
+    expect(macroBody('IS_POWERSHELL_AVAILABLE', template)).toMatch(/!ifndef DSH_POWERSHELL_STATUS_DECLARED[\s\S]*Var \/GLOBAL IsPowerShellAvailable[\s\S]*!endif/u)
+  })
+
   it('waits for the application inside the install-mode step, before the update can elevate', () => {
     // multiUserUi.nsh calls customInstallMode before it elevates, and installSection.nsh skips
     // CHECK_APP_RUNNING in the elevated inner instance. Waiting only in that later stage would
     // extract over files the running application still holds open, so the handoff has to precede
     // the machine-wide mode decision below it.
     const mode = macroBody('customInstallMode')
-    const handoff = mode.indexOf('!insertmacro customCheckAppRunning')
+    const handoff = mode.indexOf('!insertmacro CHECK_APP_RUNNING')
+    expect(mode).not.toContain('!insertmacro customCheckAppRunning')
     const machineMode = mode.indexOf('StrCpy $isForceMachineInstall "1"')
     const currentMode = mode.indexOf('StrCpy $isForceCurrentInstall "1"')
     expect(handoff).toBeGreaterThanOrEqual(0)

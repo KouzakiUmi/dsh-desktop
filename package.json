@@ -20,6 +20,7 @@
     "open@npm:^11.0.2": "patch:open@npm%3A11.0.4#./patches/open@11.0.4.patch",
     "fs-ext@npm:2.1.1": "patch:fs-ext@npm%3A2.1.1#./patches/fs-ext@2.1.1.patch",
     "pnpm@npm:11.28.5": "patch:pnpm@npm%3A11.28.5#./patches/pnpm@11.28.5.patch",
+    "node-addon-require-builtin-win32-x64-msvc@npm:0.1.9": "file:vendor/node-addon-runtime/node-addon-require-builtin-win32-x64-msvc-0.1.9-desktop.e4472.tgz",
     "koffi@npm:^3.1.0": "3.1.5",
     "node-pty@npm:1.2.0-beta.15": "patch:node-pty@npm%3A1.2.0-beta.15#./patches/node-pty@1.2.0-beta.15.patch",
     "@earendil-works/pi-ai@npm:^1.0.2": "patch:@earendil-works/pi-ai@npm%3A1.2.0#./patches/pi-ai@1.2.0.patch",
