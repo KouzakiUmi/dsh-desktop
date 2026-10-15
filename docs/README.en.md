@@ -29,9 +29,9 @@ Ordinary users can start with the [user guide](user-guide.en.md) and never need 
 | [VS Code extension-model research](../dsh-community-fabric/docs/research/vscode-extension-model.md) | Implemented declaration, Provider, UI, placement, and lifecycle patterns, with concrete constraints for the Fabric RFC |
 | [Community Market design](../dsh-community-market/README.md) | The proposed market shell, extensible catalog sources, user selection, install confirmation, and safety boundary |
 | [Market catalog provider contract](../dsh-community-market/docs/catalog-provider-contract.md) | Schemas, query parameters, multi-source behavior, and adapter rules for the implementation team |
-| [Architecture](architecture.en.md) | Electron, Host, the Web carrier, profiles, and packaging |
-| [Desktop service reference](../dsh-plugin-desktop/docs/plugin-services.md) | Stable `desktopProfiles` and `desktopPnpm` contracts with TypeScript examples |
-| [Package reference](../dsh-plugin-desktop/README.md) | Detailed build, runtime, release, and limitation notes |
+| [Upstream synchronization](<upstream-sync.en.md>) | Required patches, excluded content, artifact synchronization and regression checks |
+| [Historical architecture reference](<architecture.en.md>) | Early Stable/Beta design context, not the current product support inventory |
+| [NEXT package reference](<../dsh-desktop-next/README.md>) | Current Windows x64 build, runtime, release and limitations |
 
 ## How the README files are organized
 
@@ -41,10 +41,10 @@ The outer repository has two formal product READMEs plus one legacy compatibilit
 - [`README.en.md`](../README.en.md): the English product entry point with the same product scope.
 - [`README.zh.md`](../README.zh.md): a legacy Chinese-path compatibility page with no independent content.
 
-`README.i18n.yaml` records the bilingual blob hashes for those two formal entry points; it is not a user guide. `dsh-plugin-desktop/README.md` and `dsh-plugin-desktop/README.zh.md` ship with the npm package and are the more technical package reference. `dsh-plugin-desktop/docs/` contains stable API contracts rather than marketing copy. `.agents/notes/implemented/` contains dated maintainer decision records and does not replace user documentation.
+The [README bilingual record](<../README.i18n.yaml>) tracks hashes for the product entry points; it is not a user guide. Current technical references are the [NEXT package reference](<../dsh-desktop-next/README.md>) and [upstream synchronization guide](<upstream-sync.en.md>). Removed packages and their service documents are not instructions to restore retired implementations. Maintainer decision records preserve historical rationale rather than replace current product documentation.
 
-`deepseek-harness/` is the pinned upstream submodule. Its README and `docs/` belong to the upstream project, not to the Desktop product, and are excluded from the outer documentation inventory.
+The Core submodule pins the maintained commit in the [source record](<../upstream.json>), preserving upstream structure and required project patches. Its documentation belongs to Core, not the Desktop product; equal npm versions do not identify an unmodified official release.
 
 ## Status convention
 
-These pages distinguish shipped behavior, platform limits, and roadmap items. Compatibility mode keeps the upstream default Web client below an independent Desktop frame; extended mode installs its own Desktop layout/sidebar registration and hosts official occupants in an inverted L; enhanced mode retains a separate root registration with compact internal captions. Desktop frames provide capability-gated native materials. The plugin marketplace now has a documentation scaffold in [`dsh-community-market`](../dsh-community-market/README.md), but no usable page or installer; mobile remote control and Channels also remain separate roadmap items and are not implied to be part of the current installer.
+Documentation distinguishes implemented behavior, platform limits, unvalidated paths and roadmap items. The current product is Windows x64 NEXT; use the [NEXT package reference](<../dsh-desktop-next/README.md>) for its actual composition and acceptance commands. Early Stable/Beta platform, window-mode and API descriptions are historical context, not instructions to restore retired directories, channels or other platform support.

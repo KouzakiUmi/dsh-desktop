@@ -7,23 +7,23 @@ const spawn = vi.mocked(spawnSync)
 afterEach(() => spawn.mockReset())
 const succeeded: ReturnType<typeof spawnSync> = { status: 0, output: [], pid: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }
 
-it('includes the Next build after the shared gate and aborts packaging when either gate fails', () => {
-  const env = { PATH: '/test/bin' }
+it('forwards the Windows package gate verbatim and aborts packaging when it fails', () => {
+  const env = { PATH: 'C:\\bin' }
+  const args = ['/d', '/s', '/c', 'corepack yarn workspace dsh-desktop-next check:win-package']
   spawn.mockReturnValue(succeeded)
-  runNextPackagingCommand('yarn', ['run', 'check'], '/workspace', env, '/workspace')
-  expect(spawn.mock.calls.map(call => call[1])).toEqual([['run', 'check'], ['run', 'check:next']])
-  expect(spawn.mock.calls.every(call => call[2]?.env === env)).toBe(true)
-  spawn.mockReset().mockReturnValue({ ...succeeded, status: 1 })
-  expect(() => runNextPackagingCommand('yarn', ['run', 'check'], '/workspace', env, '/workspace')).toThrow('Packaging command failed')
+  runNextPackagingCommand('cmd.exe', args, 'C:\\workspace', env)
   expect(spawn).toHaveBeenCalledOnce()
-  spawn.mockReset().mockReturnValueOnce(succeeded).mockReturnValue({ ...succeeded, status: 1 })
-  expect(() => runNextPackagingCommand('yarn', ['run', 'check'], '/workspace', env, '/workspace')).toThrow('Packaging command failed')
-  expect(spawn).toHaveBeenCalledTimes(2)
+  expect(spawn.mock.calls[0]?.[0]).toBe('cmd.exe')
+  expect(spawn.mock.calls[0]?.[1]).toEqual(args)
+  expect(spawn.mock.calls[0]?.[2]?.env).toBe(env)
+  expect(spawn.mock.calls[0]?.[2]?.stdio).toBe('inherit')
+
+  spawn.mockReset().mockReturnValue({ ...succeeded, status: 1 })
+  expect(() => runNextPackagingCommand('cmd.exe', args, 'C:\\workspace', env)).toThrow('Packaging command failed')
+  expect(spawn).toHaveBeenCalledOnce()
 })
 
-it('routes the shared Windows package gate to Next without adding unrelated commands', () => {
-  spawn.mockReturnValue(succeeded)
-  runNextPackagingCommand('cmd.exe', ['/d', '/s', '/c', 'corepack yarn workspace dsh-plugin-desktop-beta check:win-package'], '/workspace', {}, '/workspace')
-  expect(spawn).toHaveBeenCalledOnce()
-  expect(spawn.mock.calls[0]?.[1]).toContain('corepack yarn workspace dsh-desktop-next check:win-package')
+it('surfaces a launcher failure instead of misreporting it as a packaging exit code', () => {
+  spawn.mockReturnValue({ ...succeeded, error: new Error('spawn ENOENT'), status: null })
+  expect(() => runNextPackagingCommand('cmd.exe', ['/c', 'x'], 'C:\\workspace', {})).toThrow('spawn ENOENT')
 })

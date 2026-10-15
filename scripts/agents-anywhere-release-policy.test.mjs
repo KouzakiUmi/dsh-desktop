@@ -25,13 +25,14 @@ function fixture(t, desktopVersion = version) {
     change(data)
     write(path, data)
   }
-  const runtimePeers = Object.fromEntries(AA_PEERS.map(name => [name, '0.1.5-rc.2 || 0.1.6-alpha.2']))
+  const runtimePeers = Object.fromEntries(AA_PEERS.map(name => [name,
+    name === '@deepseek-ai/cordis' ? '4.0.5-alpha.2' : name === '@deepseek-ai/schemastery' ? '^3.18.5-alpha.2' : '0.2.1-alpha.3']))
   write('package.json', { resolutions: { [AA_PACKAGE]: aaConnectorResolution(artifact) } })
   for (const [index, workspace] of AA_WORKSPACES.entries()) {
     write(`${workspace}/package.json`, {
       dependencies: {
         [AA_PACKAGE]: `file:../vendor/agents-anywhere/${artifact}`,
-        ...Object.fromEntries(AA_PEERS.map(name => [name, '0.1.5-rc.2 || 0.1.6-alpha.2'])),
+        ...runtimePeers,
       },
     })
     write(`${workspace}/node_modules/${AA_PACKAGE}/package.json`, { version: desktopVersion, peerDependencies: runtimePeers })
@@ -44,7 +45,7 @@ function fixture(t, desktopVersion = version) {
   return { root, patch }
 }
 
-test('accepts the latest AA across Stable, Beta and Next runtime peers', t => {
+test('accepts the latest AA with the complete Next runtime peer cohort', t => {
   const { root } = fixture(t)
   assert.equal(assertPreparedAaRelease(root, commit).commit, commit)
 })
@@ -68,7 +69,7 @@ test('rejects a compatibility patch pinned to a previous AA artifact', t => {
   assert.throws(() => assertPreparedAaRelease(root, commit), /compatibility patch references a different AA artifact/)
 })
 
-test('pins the AA staging type graph while keeping both Desktop runtime peer ranges', t => {
+test('pins the AA staging type graph separately from its Desktop runtime peer ranges', t => {
   const { root } = fixture(t)
   const packagePath = join(root, 'staged')
   mkdirSync(packagePath)

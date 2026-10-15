@@ -1,10 +1,9 @@
 /** Exercise the actual Electron filesystem implementation without opening windows. */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -15,12 +14,18 @@ if (!process.versions.electron) {
     stdio: 'inherit', timeout: 30_000,
   })
   if (child.error) throw child.error
+  assert.equal(child.signal, null, 'Electron safe-home cleanup verification was interrupted')
   assert.equal(child.status, 0, 'Electron safe-home cleanup verification failed')
 } else {
   const { NextDesktopRuntime } = await import('../lib/desktop-runtime.js')
+  // The fixture owns its checkout-local files; it requires no system TEMP write grant.
+  const desktopRoot = realpathSync(fileURLToPath(new URL('..', import.meta.url)))
+  const fixtures = join(desktopRoot, '.desktop-build', 'verification')
+  mkdirSync(fixtures, { recursive: true })
+  assert.equal(realpathSync(fixtures), fixtures, 'Verification files must remain inside the checkout')
   for (const action of ['close', 'normal-mode']) for (const fixture of ['readonly', 'external-junction', 'ancestor-junction']) {
-    const root = mkdtempSync(join(tmpdir(), 'next-electron-safe-cleanup-'))
-    assert.ok(resolve(root).startsWith(resolve(tmpdir()) + sep))
+    const root = mkdtempSync(join(fixtures, 'safe-cleanup-'))
+    assert.ok(resolve(root).startsWith(fixtures + sep))
     const runtime = new NextDesktopRuntime({ home: join(root, 'home'), root, executable: process.execPath,
       addresses: () => [], certificate: async () => { throw new Error('Unexpected certificate request') },
       onFailure() {}, onChange() {}, onRestart() {}, onTerminal() {}, onNotification() {},

@@ -11,7 +11,6 @@ import { updateLabel } from './update-state.ts'
 
 export function applyWindowMaterial(window: BrowserWindow, preferences: DesktopPreferences): void {
   const material = windowMaterial(preferences)
-  if (process.platform === 'darwin') window.setVibrancy(material === 'transparent' ? 'sidebar' : null)
   window.setBackgroundColor(material === 'off' ? nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb' : '#00000000')
   window.webContents.send(IPC.material, material)
 }
@@ -26,9 +25,8 @@ export class NativeDesktop {
   get available(): boolean { return !!this.tray && !this.tray.isDestroyed() }
   createTray(): void {
     try {
-      const icon = nativeImage.createFromPath(unpackedPath(join(this.options.root, 'assets', process.platform === 'darwin' ? 'tray-iconTemplate.png' : 'tray-icon-blue.png')))
+      const icon = nativeImage.createFromPath(unpackedPath(join(this.options.root, 'assets', 'tray-icon-blue.png')))
       if (icon.isEmpty()) throw new Error('Tray icon is unavailable')
-      if (process.platform === 'darwin') icon.setTemplateImage(true)
       this.tray = new Tray(icon)
       this.tray.on('click', this.options.show)
       this.tray.on('double-click', this.options.show)
@@ -37,18 +35,9 @@ export class NativeDesktop {
   }
   items() { return desktopMenu(this.options.state(), this.options.language(), this.options.show, this.options.run) }
   refresh(): void {
-    if (process.platform !== 'win32') Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'DSH NEXT', submenu: this.items() }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
-    ]))
     if (!this.available) return
     const state = this.options.state()
     this.tray!.setToolTip(`DSH NEXT · ${state.selected} · ${state.phase}${state.updates && state.updates.phase !== 'idle' ? ` · ${updateLabel(state.updates, this.options.language())}` : ''}`)
-    if (process.platform === 'darwin') {
-      const progress = state.updates
-      this.tray!.setTitle(progress?.phase === 'downloading'
-        ? progress.total ? `${Math.min(100, Math.floor((progress.received ?? 0) / progress.total * 100))}%` : `${Math.floor((progress.received ?? 0) / 1048576)} MB`
-        : progress?.phase === 'ready' ? '✓' : '')
-    }
     this.tray!.setContextMenu(Menu.buildFromTemplate(this.items()))
   }
   notify(message: DesktopNotification): void {
@@ -58,6 +47,26 @@ export class NativeDesktop {
     const notification = new Notification(notificationCopy(message, this.options.language()))
     this.notifications.add(notification)
     notification.once('click', this.options.show)
+    notification.once('close', () => this.notifications.delete(notification))
+    notification.once('failed', (_event, error) => { this.notifications.delete(notification); this.options.warn(error) })
+    notification.show()
+    if (this.notifications.size > 10) { const oldest = this.notifications.values().next().value!; oldest.close(); this.notifications.delete(oldest) }
+  }
+  /**
+   * Announce one newly discovered background update. A platform that cannot show notifications
+   * opens the download prompt directly, so the discovery is never silent.
+   * @param version - Version the service published.
+   * @param onSelect - Opens the download prompt once the user reacts to the notification.
+   */
+  notifyUpdate(version: string, onSelect: () => void): void {
+    if (!Notification.isSupported()) { onSelect(); return }
+    const zh = this.options.language().toLowerCase().startsWith('zh')
+    const notification = new Notification({
+      title: 'DSH NEXT',
+      body: zh ? `发现新版本 v${version}，点击下载更新。` : `DSH NEXT v${version} is available. Click to download the update.`,
+    })
+    this.notifications.add(notification)
+    notification.once('click', () => { this.options.show(); onSelect() })
     notification.once('close', () => this.notifications.delete(notification))
     notification.once('failed', (_event, error) => { this.notifications.delete(notification); this.options.warn(error) })
     notification.show()

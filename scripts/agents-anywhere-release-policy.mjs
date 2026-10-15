@@ -1,4 +1,4 @@
-/** Validate the AA artifact selected by Stable, Beta and Next. */
+/** Validate the AA artifact and complete runtime peer cohort selected by Next. */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -6,7 +6,7 @@ import { basename, join } from 'node:path'
 export const AA_REPOSITORY = 'https://github.com/anywhere-labs/Agents-Anywhere.git'
 export const AA_PACKAGE = '@agents-anywhere/dsh-bridge-next'
 export const AA_WORKSPACES = ['dsh-desktop-next']
-export const AA_PEERS = ['@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session']
+export const AA_PEERS = ['@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session', '@deepseek-ai/cordis', '@deepseek-ai/schemastery']
 
 export function aaConnectorResolution(artifact) {
   return `patch:${AA_PACKAGE}@file%3Avendor/agents-anywhere/${artifact}#./patches/agents-anywhere-connector-httpx.patch`

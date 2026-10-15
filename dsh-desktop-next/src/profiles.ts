@@ -325,8 +325,8 @@ function archivedAgentsAnywhereConfig(installAnchor: string): { connectorSourceD
   catch { return {} /* The bridge is optional; without it there is nothing to redirect. */ }
   const config: { connectorSourceDir: string; uvPath?: string } = { connectorSourceDir: unpackedPath(join(packageDir, 'lib', 'bundled-connector')) }
   try {
-    const uv = dirname(createRequire(join(packageDir, 'package.json')).resolve(`@dataiku/uv-${process.platform}-${process.arch}/package.json`))
-    config.uvPath = unpackedPath(join(uv, 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv'))
+    const uv = dirname(createRequire(join(packageDir, 'package.json')).resolve('@dataiku/uv-win32-x64/package.json'))
+    config.uvPath = unpackedPath(join(uv, 'bin', 'uv.exe'))
   } catch { /* No bundled uv for this platform; the bridge searches PATH as before. */ }
   return config
 }

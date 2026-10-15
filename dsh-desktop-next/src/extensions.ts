@@ -34,10 +34,10 @@ export function apply(ctx: Context): void {
   ctx.provide('desktopProfiles', { current: { name: profile.name, dir: profile.dir } })
   ctx.provide('desktopPnpm', runner)
   if (process.send) ctx.provide('desktopActions', {
-    ...(process.platform === 'darwin' || process.platform === 'win32' ? { openTerminal: () => {
+    openTerminal: () => {
       if (!process.connected || !process.send) throw new Error('Next shell is unavailable')
       process.send({ type: 'desktop-action', action: 'terminal' }, () => {})
-    } } : {}),
+    },
     requestRestart: () => new Promise<void>((resolve, reject) => {
       if (!process.connected || !process.send) { reject(new Error('Next shell is unavailable')); return }
       process.send({ type: 'desktop-action', action: 'restart' }, error => error ? reject(error) : resolve())

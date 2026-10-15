@@ -1,29 +1,33 @@
-/** Explicit native protocol checks with hidden windows and disposable user data. */
+/** Explicit native protocol checks with hidden windows and disposable user data; Windows x64 only. */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, dialog, protocol, session } from 'electron'
 import { NextDesktopRuntime } from '../lib/desktop-runtime.js'
 import { appRequestHeaders, forwardWebRequest, serveWebDocument } from '../lib/web-document.js'
 import { installAppDownloads } from '../lib/app-downloads.js'
+import { isVerificationHome } from './verification-scratch.mjs'
 
-if (process.argv.includes('--plugin-frames') && (process.platform === 'win32' || (process.platform === 'linux' && process.env.DISPLAY))) {
-  void verifyPluginFrames()
-} else if (process.platform !== 'linux' || !process.env.DISPLAY) {
-  console.error('Run this native protocol check on Linux under xvfb-run; use check:next for portable headless checks.')
+/** Prefixes that mark a directory as one of these gates' own disposable userData trees. */
+const PLUGIN_FRAMES_PREFIX = 'plugin-frames-'
+const PROTOCOL_PREFIX = 'protocol-'
+
+if (process.platform !== 'win32' || process.arch !== 'x64') {
+  console.error('Run this native protocol check on Windows x64; use check:next for portable headless checks.')
   app.exit(1)
-} else {
+} else if (process.argv.includes('--plugin-frames')) {
   // Electron emits ready after evaluating its ESM entry; do not await it at module scope.
+  void verifyPluginFrames()
+} else {
   void verify()
 }
 
 /** Exercise real child-frame navigation without starting a Host or reading a user's Profile. */
 async function verifyPluginFrames() {
-  const home = process.argv[process.argv.indexOf('--plugin-frames-home') + 1]
-  assert.ok(home && dirname(resolve(home)) === resolve(tmpdir()) && basename(home).startsWith('dsh-next-plugin-frames-'),
+  const home = process.argv[process.argv.indexOf('--verification-home') + 1]
+  assert.ok(isVerificationHome(home, PLUGIN_FRAMES_PREFIX),
     'Run yarn verify:plugin-frames so its launcher owns a disposable userData directory')
   app.setPath('userData', home)
   app.setPath('sessionData', home)
@@ -150,8 +154,10 @@ async function verifyPluginFrames() {
 
 async function verify() {
   const root = fileURLToPath(new URL('..', import.meta.url))
-  const home = mkdtempSync(join(tmpdir(), 'dsh-next-protocol-'))
+  const home = process.argv[process.argv.indexOf('--verification-home') + 1]
+  assert.ok(isVerificationHome(home, PROTOCOL_PREFIX), 'Run yarn verify:protocol through its private-home launcher')
   app.setPath('userData', home)
+  app.setPath('sessionData', home)
   protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: {
     standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
   } }])
@@ -300,7 +306,6 @@ async function verify() {
     clearTimeout(deadline)
     window?.destroy()
     await runtime.close()
-    rmSync(home, { recursive: true, force: true })
     app.exit(exitCode)
   }
 }

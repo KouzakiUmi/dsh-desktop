@@ -1,18 +1,20 @@
-/** Export native Icon Composer artwork; checking committed resources needs no Xcode. */
-import { execFileSync } from 'node:child_process'
+/** Verify the committed application icon resources; regenerate the Windows ICO on any build host. */
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { delimiter, dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(import.meta.dirname, '..')
-export const ICON_PACKAGES = Object.freeze({
-  stable: 'dsh-plugin-desktop',
-  beta: 'dsh-plugin-desktop-beta',
-  next: 'dsh-desktop-next',
-})
-const outputs = ['app-icon.png', 'app-icon-mac.png', 'app-icon.ico', 'app-icon.icns']
+
+/** Channels that commit icon resources. Next is the only product this repository ships. */
+export const ICON_PACKAGES = Object.freeze({ next: 'dsh-desktop-next' })
+
+/**
+ * Files the Windows package consumes. The layered Icon Composer document is the source of record;
+ * macOS renders `app-icon.png` from it, and every host derives the multi-size `app-icon.ico`.
+ */
+export const ICON_OUTPUTS = Object.freeze(['app-icon.png', 'app-icon.ico'])
+
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 
 /** Include every vector layer, not just icon.json, when detecting stale exports. */
@@ -30,77 +32,50 @@ export function iconSourceDigest(directory) {
   return digest.digest('hex')
 }
 
-/** Fail on source edits or missing/modified platform exports on any build host. */
+/**
+ * Fail on source edits or missing/modified committed exports on any build host.
+ * @param {string} buildDirectory - Package build directory holding the icon record.
+ * @returns {void}
+ */
 export function checkIconResources(buildDirectory) {
   const record = JSON.parse(readFileSync(join(buildDirectory, 'app-icon.resources.json'), 'utf8'))
-  const stale = () => { throw new Error(`${buildDirectory}: icon resources are stale; run corepack yarn icons:export on macOS and commit the results`) }
+  const stale = () => {
+    throw new Error(`${buildDirectory}: icon resources are stale; render the committed PNG from the Icon Composer source on macOS and run corepack yarn icons:export`)
+  }
   if (record.source !== 'app-icon.icon' || record.sourceSha256 !== iconSourceDigest(join(buildDirectory, 'app-icon.icon'))) stale()
-  for (const name of outputs) {
+  for (const name of ICON_OUTPUTS) {
     if (!existsSync(join(buildDirectory, name)) || record.outputs?.[name] !== hash(readFileSync(join(buildDirectory, name)))) stale()
   }
 }
 
-function developerDirectory() {
-  const configured = process.env.DEVELOPER_DIR
-  if (configured) {
-    if (!existsSync(join(configured, 'usr/bin/actool'))) throw new Error('DEVELOPER_DIR must point to Xcode 26 or later, including actool')
-    return configured
-  }
-  const selected = execFileSync('xcode-select', ['-p'], { encoding: 'utf8' }).trim()
-  const candidates = [selected, '/Applications/Xcode.app/Contents/Developer', '/Applications/Xcode-beta.app/Contents/Developer']
-  const available = candidates.find(path => existsSync(join(path, 'usr/bin/actool')))
-  if (!available) throw new Error('Icon export requires Xcode and Icon Composer on macOS')
-  return available
+/** Re-record the layered source digest and every committed Windows export. */
+function writeIconRecord(buildDirectory) {
+  const record = JSON.parse(readFileSync(join(buildDirectory, 'app-icon.resources.json'), 'utf8'))
+  writeFileSync(join(buildDirectory, 'app-icon.resources.json'), `${JSON.stringify({
+    ...record,
+    source: 'app-icon.icon',
+    sourceSha256: iconSourceDigest(join(buildDirectory, 'app-icon.icon')),
+    outputs: Object.fromEntries(ICON_OUTPUTS.map(name => [name, hash(readFileSync(join(buildDirectory, name)))])),
+  }, null, 2)}\n`)
 }
 
 async function main() {
   const args = process.argv.slice(2)
-  const requested = args.includes('--channel') ? args[args.indexOf('--channel') + 1] : 'all'
-  if (requested !== 'all' && !Object.hasOwn(ICON_PACKAGES, requested)) throw new Error('Use --channel stable, beta, next, or all')
-  const selected = Object.entries(ICON_PACKAGES).filter(([channel]) => requested === 'all' || requested === channel)
+  const requested = args.includes('--channel') ? args[args.indexOf('--channel') + 1] : 'next'
+  if (!Object.hasOwn(ICON_PACKAGES, requested)) throw new Error('Use --channel next')
+  const build = join(root, ICON_PACKAGES[requested], 'build')
   if (args.includes('--check')) {
-    for (const [channel, name] of selected) {
-      checkIconResources(join(root, name, 'build'))
-      console.log(`icons: ${channel} source and all platform resources match`)
-    }
+    checkIconResources(build)
+    console.log(`icons: ${requested} layered source and every committed Windows export match`)
     return
   }
-  if (process.platform !== 'darwin') throw new Error('Run icons:export on macOS; other build hosts use the committed exports and icons:check')
-  const developer = developerDirectory()
-  const composer = join(dirname(developer), 'Applications/Icon Composer.app/Contents/Executables/ictool')
-  if (!existsSync(composer)) throw new Error('Selected Xcode does not include Icon Composer')
-  // Scoped to this command and its children; do not change xcode-select globally.
-  process.env.DEVELOPER_DIR = developer
-  process.env.PATH = `${join(developer, 'usr/bin')}${delimiter}${process.env.PATH ?? ''}`
-  const require = createRequire(join(root, 'dsh-plugin-desktop-beta/package.json'))
-  const { generateAssetCatalogForIcon } = require('app-builder-lib/out/util/macosIconComposer.js')
-  const { generateMacAppIcon } = await import('../dsh-plugin-desktop-beta/scripts/generate-mac-app-icon.mjs')
-  const { generateWindowsAppIcon } = await import('../dsh-plugin-desktop-beta/scripts/generate-windows-app-icon.mjs')
-
-  for (const [channel, name] of selected) {
-    const build = join(root, name, 'build')
-    const source = join(build, 'app-icon.icon')
-    const sourceSha256 = iconSourceDigest(source)
-    execFileSync(composer, [source, '--export-image', '--output-file', join(build, 'app-icon.png'),
-      '--platform', 'macOS', '--rendition', 'Default', '--width', '1024', '--height', '1024', '--scale', '1',
-      '--design-generation', '27'], { stdio: 'pipe' })
-    // Compile the actual layered source through the same implementation as mac.icon.
-    // The application gets Assets.car at packaging time; this ICNS is for legacy systems and DMGs.
-    const { assetCatalog, icnsFile } = await generateAssetCatalogForIcon(source)
-    if (!assetCatalog.length || icnsFile.subarray(0, 4).toString() !== 'icns') throw new Error(`Invalid native icon compilation for ${channel}`)
-    writeFileSync(join(build, 'app-icon.icns'), icnsFile)
-    await generateMacAppIcon(join(build, 'app-icon.png'), join(build, 'app-icon-mac.png'))
-    await generateWindowsAppIcon(join(build, 'app-icon.png'), join(build, 'app-icon.ico'))
-    if (sourceSha256 !== iconSourceDigest(source)) throw new Error('Icon source changed while exporting; save the document and run icons:export again')
-    writeFileSync(join(build, 'app-icon.resources.json'), `${JSON.stringify({
-      source: 'app-icon.icon', sourceSha256,
-      mac: { input: 'app-icon.icon', legacy: 'app-icon.icns', catalogName: 'Icon' },
-      png: { platform: 'macOS', rendition: 'Default', designGeneration: 27, size: 1024 },
-      outputs: Object.fromEntries(outputs.map(name => [name, hash(readFileSync(join(build, name)))])),
-    }, null, 2)}\n`)
-    checkIconResources(build)
-    console.log(`icons: ${channel} exported PNG, ICO and native ICNS; layered Assets.car compilation passed (${assetCatalog.length} bytes)`)
-  }
+  // The layered document renders through Icon Composer on macOS; every other host rebuilds the
+  // Windows ICO from the committed 1024px PNG, which is the artwork the application ships.
+  const { generateWindowsAppIcon } = await import(`../${ICON_PACKAGES[requested]}/scripts/generate-windows-app-icon.mjs`)
+  await generateWindowsAppIcon(join(build, 'app-icon.png'), join(build, 'app-icon.ico'))
+  writeIconRecord(build)
+  checkIconResources(build)
+  console.log(`icons: ${requested} regenerated app-icon.ico from the committed artwork and re-recorded its digest`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

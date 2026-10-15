@@ -47,28 +47,6 @@ function spawnHarness(): SpawnHarness {
   }
 }
 
-function macOptions(stateDir: string, spawn: DesktopTerminalSpawn): DesktopTerminalOptions {
-  return {
-    platform: 'darwin',
-    appExecutable: "/Applications/DSH O'Brien.app/Contents/MacOS/DSH Desktop",
-    dshBootstrapPath: "/Applications/DSH O'Brien.app/Contents/Resources/app.asar/lib/dsh-terminal-bootstrap.js",
-    pnpmBinPath: "/Applications/DSH O'Brien.app/Contents/Resources/app.asar/node_modules/pnpm/bin/pnpm.mjs",
-    electronVersion: '43.4.0',
-    profileName: 'desktop',
-    productVersion: '2.0.0',
-    profileDir: "/Users/example/Library/Application Support/DSH O'Brien/profiles/desktop",
-    homeDir: "/Users/example/Library/Application Support/DSH O'Brien",
-    stateDir,
-    spawn,
-    environment: {
-      PATH: '/usr/local/bin:/usr/bin:/bin',
-      DSH_HOME: '/inherited/dsh-home',
-      electron_run_as_node: 'inherited-node-mode',
-      KEEP: 'value',
-    },
-  }
-}
-
 function windowsOptions(stateDir: string, spawn: DesktopTerminalSpawn): DesktopTerminalOptions {
   return {
     platform: 'win32',
@@ -111,111 +89,6 @@ describe('desktop terminal environment', () => {
     expect(basename(work)).toMatch(/^[a-f0-9]{64}$/u)
     expect(work).not.toBe(desktop)
     expect(desktopTerminalStateDirectory('/tmp/dsh-desktop', 'desktop')).toBe(desktop)
-  })
-
-  it('generates private macOS shims and opens one quoted welcome command', () => {
-    const stateDir = join(temporaryDirectory(), 'terminal state')
-    const harness = spawnHarness()
-    const options = macOptions(stateDir, harness.spawn)
-
-    const launch = openDesktopTerminal(options)
-
-    expect(launch).toMatchObject({
-      shimDir: join(stateDir, 'bin'),
-      dshShimPath: join(stateDir, 'bin', 'dsh'),
-      pnpmShimPath: join(stateDir, 'bin', 'pnpm'),
-      nodeShimPath: join(stateDir, 'bin', 'node'),
-      welcomePath: join(stateDir, 'welcome.command'),
-      child: harness.child,
-    })
-    if (process.platform !== 'win32') {
-      expect(lstatSync(stateDir).mode & 0o777).toBe(0o700)
-      expect(lstatSync(launch.shimDir).mode & 0o777).toBe(0o700)
-      for (const filename of [launch.dshShimPath, launch.pnpmShimPath, launch.nodeShimPath, launch.welcomePath]) {
-        expect(lstatSync(filename).mode & 0o777).toBe(0o700)
-      }
-    }
-
-    const dshShim = readFileSync(launch.dshShimPath, 'utf8')
-    expect(dshShim).toContain("DSH_DESKTOP_DEFAULT_PROFILE='desktop' ELECTRON_RUN_AS_NODE=1 exec")
-    expect(dshShim).toContain('--expose-internals')
-    expect(dshShim).toContain("'/Applications/DSH O'\"'\"'Brien.app/Contents/MacOS/DSH Desktop'")
-    expect(dshShim).toContain("'/Applications/DSH O'\"'\"'Brien.app/Contents/Resources/app.asar/lib/dsh-terminal-bootstrap.js'")
-    expect(dshShim).toContain('"$@"')
-    expect(dshShim).not.toContain('npm_config_')
-    const pnpmShim = readFileSync(launch.pnpmShimPath, 'utf8')
-    expect(pnpmShim).toContain('ELECTRON_RUN_AS_NODE=1 npm_config_runtime=electron')
-    expect(pnpmShim).toContain("npm_config_target='43.4.0'")
-    expect(pnpmShim).toContain("npm_config_disturl='https://electronjs.org/headers'")
-    expect(pnpmShim.match(/--config\.minimumReleaseAge=0/gu)).toHaveLength(1)
-    expect(pnpmShim).toContain('--config.minimumReleaseAge=0 "$@"')
-    const nodeShim = readFileSync(launch.nodeShimPath, 'utf8')
-    expect(nodeShim).toBe([
-      '#!/bin/sh',
-      `ELECTRON_RUN_AS_NODE=1 exec '/Applications/DSH O'"'"'Brien.app/Contents/MacOS/DSH Desktop' "$@"`,
-      '',
-    ].join('\n'))
-    expect(nodeShim).not.toContain('npm_config_')
-
-    const welcome = readFileSync(launch.welcomePath, 'utf8')
-    expect(welcome).toContain('unset ELECTRON_RUN_AS_NODE')
-    expect(welcome).not.toContain('ELECTRON_RUN_AS_NODE=1')
-    expect(welcome).toContain("printf '\\033[2J\\033[3J\\033[H'")
-    expect(welcome).toContain('DSH Desktop 2.0.0 terminal')
-    expect(welcome).toContain('Profile: desktop')
-    expect(welcome).toContain('Plugin commands without --profile modify the desktop profile.')
-    expect(welcome).toContain('dsh --dump-config')
-    expect(welcome).toContain('dsh plugin add <third-party-plugin>')
-    expect(welcome).toContain('dsh plugin remove <third-party-plugin>')
-    expect(welcome).toContain('dsh plugin update')
-    expect(welcome).toContain('Restart DSH Desktop after plugin changes.')
-    expect(welcome).not.toContain(' -l')
-    expect(welcome).toContain("DSH O'\"'\"'Brien")
-    expect(welcome).toContain('exec "${SHELL}" --noprofile --rcfile')
-    expect(welcome).toContain('exec "${SHELL}" -i')
-
-    const zshRc = readFileSync(join(stateDir, '.zshrc'), 'utf8')
-    expect(zshRc).toContain('source "${DSH_DESKTOP_USER_ZDOTDIR}/.zshrc"')
-    expect(zshRc).toContain('unset ELECTRON_RUN_AS_NODE')
-    expect(zshRc).toContain(`path=('${launch.shimDir}' $path)`)
-    const bashRc = readFileSync(join(stateDir, 'bashrc'), 'utf8')
-    expect(bashRc).toContain('. "${DSH_DESKTOP_USER_BASHRC}"')
-    expect(bashRc.indexOf('. "${DSH_DESKTOP_USER_BASHRC}"')).toBeLessThan(
-      bashRc.indexOf(`export PATH='${launch.shimDir}'`),
-    )
-    if (process.platform === 'darwin') {
-      expect(spawnSync('/bin/sh', ['-n', launch.dshShimPath]).status).toBe(0)
-      expect(spawnSync('/bin/sh', ['-n', launch.pnpmShimPath]).status).toBe(0)
-      expect(spawnSync('/bin/sh', ['-n', launch.nodeShimPath]).status).toBe(0)
-      expect(spawnSync('/bin/sh', ['-n', launch.welcomePath]).status).toBe(0)
-      expect(spawnSync('/bin/zsh', ['-n', join(stateDir, '.zshrc')]).status).toBe(0)
-      expect(spawnSync('/bin/bash', ['-n', join(stateDir, 'bashrc')]).status).toBe(0)
-    }
-
-    expect(harness.calls).toHaveLength(1)
-    expect(harness.calls[0]).toEqual({
-      command: '/usr/bin/open',
-      args: ['-a', 'Terminal', launch.welcomePath],
-      options: {
-        cwd: options.profileDir,
-        detached: true,
-        env: {
-          KEEP: 'value',
-          PATH: `${launch.shimDir}:/usr/local/bin:/usr/bin:/bin`,
-          DSH_HOME: options.homeDir,
-        },
-        shell: false,
-        stdio: 'ignore',
-        windowsHide: false,
-      },
-    })
-    expect(harness.unref).toHaveBeenCalledOnce()
-    expect(options.environment).toEqual({
-      PATH: '/usr/local/bin:/usr/bin:/bin',
-      DSH_HOME: '/inherited/dsh-home',
-      electron_run_as_node: 'inherited-node-mode',
-      KEEP: 'value',
-    })
   })
 
   it('generates Windows batch shims and opens PowerShell through a visible-console broker', () => {
@@ -475,23 +348,24 @@ describe('desktop terminal environment', () => {
   it('supports Next Profile names with localized paths and rejects escapes before writing state', () => {
     const root = temporaryDirectory()
     const harness = spawnHarness()
-    const unsupported = macOptions(join(root, 'unsupported'), harness.spawn)
+    const unsupported = windowsOptions(join(root, 'unsupported'), harness.spawn)
     unsupported.platform = 'linux'
     expect(() => openDesktopTerminal(unsupported)).toThrow('terminal is unsupported on linux')
     expect(() => lstatSync(unsupported.stateDir)).toThrow()
 
-    const unsafe = macOptions(join(root, 'unsafe'), harness.spawn)
+    const unsafe = windowsOptions(join(root, 'unsafe'), harness.spawn)
     unsafe.profileName = '../desktop'
     expect(() => openDesktopTerminal(unsafe)).toThrow('Profile 名称')
     expect(() => lstatSync(unsafe.stateDir)).toThrow()
 
-    const localized = macOptions(join(root, 'localized'), harness.spawn)
+    const localized = windowsOptions(join(root, 'localized'), harness.spawn)
     localized.profileName = 'work-profile'
-    openDesktopTerminal(localized)
-    expect(readFileSync(join(localized.stateDir, 'welcome.command'), 'utf8'))
-      .toContain('Profile: work-profile')
+    const launch = openDesktopTerminal(localized)
+    expect(readFileSync(launch.welcomePath, 'utf8')).toContain('Profile:')
+    // The generated scripts read the profile from the child environment, never from inline text.
+    expect(harness.calls[0]?.options.env).toMatchObject({ DSH_DESKTOP_DEFAULT_PROFILE: 'work-profile' })
 
-    const newline = macOptions(join(root, 'newline'), harness.spawn)
+    const newline = windowsOptions(join(root, 'newline'), harness.spawn)
     newline.productVersion = '2.0.0\ntouch injected'
     expect(() => openDesktopTerminal(newline)).toThrow('must not contain NUL or newlines')
     expect(() => lstatSync(newline.stateDir)).toThrow()
@@ -499,21 +373,6 @@ describe('desktop terminal environment', () => {
   })
 })
 
-
-it.skipIf(process.platform === 'win32').each(['safe', 'recovery'] as const)('launches a macOS %s terminal with matching pwd, DSH_HOME and environment label', mode => {
-  const root = temporaryDirectory()
-  const homeDir = join(root, mode === 'safe' ? 'safe-runtime' : 'original')
-  const profileDir = join(homeDir, 'profiles', 'desktop')
-  mkdirSync(profileDir, { recursive: true })
-  const harness = spawnHarness()
-  const launch = openDesktopTerminal({ ...macOptions(join(homeDir, 'cli'), harness.spawn), homeDir, profileDir, mode })
-  // Execute the generated setup through the welcome text, without opening an interactive terminal.
-  const prefix = readFileSync(launch.welcomePath, 'utf8').split('case "${SHELL:-/bin/zsh}" in')[0]!
-  const result = spawnSync('/bin/sh', ['-c', prefix + '\npwd\nprintf "%s\\n" "$DSH_HOME"'], { encoding: 'utf8' })
-  expect(result.status).toBe(0)
-  expect(result.stdout.trim().split('\n').slice(-2)).toEqual([profileDir, homeDir])
-  expect(result.stdout).toContain(mode === 'safe' ? 'Safe mode: temporary environment' : 'Recovery terminal: original Profile')
-})
 
 it.each(['safe', 'recovery'] as const)('labels the Windows %s terminal for both PowerShell and cmd', mode => {
   const harness = spawnHarness()

@@ -1,9 +1,9 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPackageWithOptions } from '@electron/asar'
 import { afterEach, expect, it } from 'vitest'
-import { archivedPayload, auditNextPayload, nextPackagingTarget, nextPayloadRelease, universalMergeRewrite, UPDATER_MANIFEST_SHIM_MAX_BYTES, verifyArchiveAgainstPrepared, verifyNextPayload, verifyNextRuntime, verifyUpdaterManifestShim } from '../scripts/packaged-payload.ts'
+import { archivedPayload, auditNextPayload, nextPackagingTarget, nextPayloadRelease, verifyArchiveAgainstPrepared, verifyNextPayload, verifyNextRuntime, verifyUpdaterManifestShim } from '../scripts/packaged-payload.ts'
 import { DESKTOP_RUNTIME_FILE, physicalPayload, readDesktopRuntime, sealPayload } from '../src/runtime-tree.ts'
 import { completeApplication, FIXTURE_RELEASE, FIXTURE_SHARED, writeApplication, writePackage } from './runtime-fixture.ts'
 
@@ -11,12 +11,10 @@ const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 const machO = (body: string): Buffer => Buffer.concat([Buffer.from([0xCF, 0xFA, 0xED, 0xFE]), Buffer.from(body)])
 const unix = process.platform !== 'win32'
-const target = nextPackagingTarget(process.platform, process.arch)
+const target = nextPackagingTarget('win32')
 const HELPER_PLIST = 'node_modules/native-pkg/Helper.app/Contents/Info.plist'
 /** A nested bundle's Info.plist as its package ships it. */
 const PLIST = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>org.example.helper</string>\n\t<key>CFBundleVersion</key>\n\t<string>1.0</string>\n</dict>\n</plist>\n"
-/** The same plist after @electron/universal parsed it, injected the archive integrity and serialized it again. */
-const MERGED_PLIST = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n  <dict>\n    <key>CFBundleIdentifier</key>\n    <string>org.example.helper</string>\n    <key>CFBundleVersion</key>\n    <string>1.0</string>\n    <key>ElectronAsarIntegrity</key>\n    <dict>\n      <key>Resources/app.asar</key>\n      <dict>\n        <key>algorithm</key>\n        <string>SHA256</string>\n        <key>hash</key>\n        <string>0000</string>\n      </dict>\n    </dict>\n  </dict>\n</plist>"
 
 /**
  * A prepared Next payload with its sealed descriptor, then the archive Electron Builder assembles
@@ -48,10 +46,21 @@ async function assembled(extra: (app: string) => void = () => {}, seal = true): 
   return { resources, app }
 }
 
-it('describes the architectures each release target carries', () => {
-  expect(nextPackagingTarget('darwin')).toEqual({ platform: 'darwin', archs: ['arm64', 'x64'] })
+it('describes the one target the product ships and refuses every other platform', () => {
   expect(nextPackagingTarget('win32')).toEqual({ platform: 'win32', archs: ['x64'] })
-  expect(nextPackagingTarget('linux', 'arm64')).toEqual({ platform: 'linux', archs: ['arm64'] })
+  expect(() => nextPackagingTarget('darwin')).toThrow(/Windows x64 only/u)
+  expect(() => nextPackagingTarget('linux')).toThrow(/Windows x64 only/u)
+})
+
+it('requires the bundled stylesheet license without requiring a macOS tray template', () => {
+  const root = mkdtempSync(join(tmpdir(), 'desktop-license-'))
+  roots.push(root)
+  writeApplication(root)
+  completeApplication(root)
+  expect(existsSync(join(root, 'assets/tray-iconTemplate.png'))).toBe(false)
+  expect(() => verifyNextPayload(physicalPayload(root))).not.toThrow()
+  rmSync(join(root, 'assets/licenses/shadcn.txt'))
+  expect(() => verifyNextPayload(physicalPayload(root))).toThrow('Missing Next payload: assets/licenses/shadcn.txt')
 })
 
 it('reads archive entries from their offsets, unpacked entries from the physical sibling and the embedded descriptor', async () => {
@@ -138,7 +147,7 @@ it('cross-checks the archive against the prepared descriptor, then the final app
   const shim = join(resources, 'app.asar.unpacked', 'scripts', 'node-bin', 'node')
   const source = archivedPayload(resources)
   try {
-    expect(verifyArchiveAgainstPrepared(source, prepared, FIXTURE_RELEASE.version, target)).toEqual({ descriptor: sealed, rewrittenPlists: [] })
+    expect(verifyArchiveAgainstPrepared(source, prepared, FIXTURE_RELEASE.version, target)).toEqual({ descriptor: sealed })
     expect(() => verifyArchiveAgainstPrepared(source, prepared, '2.0.1-next', target)).toThrow(/not the expected 2\.0\.1-next/u)
     // The archive must carry the prepared descriptor byte for byte, not merely an equivalent one.
     writeFileSync(prepared, JSON.stringify(sealed))
@@ -161,36 +170,6 @@ it('cross-checks the archive against the prepared descriptor, then the final app
   expect(() => verifyNextRuntime(resources, FIXTURE_RELEASE.version, target, { afterCodeSigning: true })).toThrow(/changed scripts\/node-bin\/node/u)
 })
 
-it('tolerates the Info.plist rewrites of a universal merge, and nothing else', async () => {
-  const { resources, app } = await assembled()
-  const prepared = join(app, DESKTOP_RUNTIME_FILE)
-  const sealed = readDesktopRuntime(prepared)
-  const shipped = join(resources, 'app.asar.unpacked', ...HELPER_PLIST.split('/'))
-  expect(existsSync(shipped)).toBe(true)
-  writeFileSync(shipped, MERGED_PLIST)
-  const source = archivedPayload(resources)
-  try {
-    expect(verifyArchiveAgainstPrepared(source, prepared, FIXTURE_RELEASE.version, target)).toEqual({ descriptor: sealed, rewrittenPlists: [HELPER_PLIST] })
-    // Content that changed is a changed file, and so is a prepared copy that drifted from its record.
-    writeFileSync(shipped, MERGED_PLIST.replace('<string>1.0</string>', '<string>2.0</string>'))
-    expect(() => verifyArchiveAgainstPrepared(source, prepared, FIXTURE_RELEASE.version, target)).toThrow(/changed node_modules\/native-pkg\/Helper\.app\/Contents\/Info\.plist/u)
-    writeFileSync(shipped, MERGED_PLIST)
-    writeFileSync(join(app, ...HELPER_PLIST.split('/')), MERGED_PLIST)
-    expect(() => verifyArchiveAgainstPrepared(source, prepared, FIXTURE_RELEASE.version, target)).toThrow(/changed node_modules\/native-pkg\/Helper\.app\/Contents\/Info\.plist/u)
-    writeFileSync(join(app, ...HELPER_PLIST.split('/')), PLIST)
-    // Only plists qualify: a re-serialized manifest is still a changed file.
-    const packedManifest = source.entry('node_modules/native-pkg/package.json')!
-    expect(universalMergeRewrite(app).accept(sealed.files.find(file => file.path === 'node_modules/native-pkg/package.json')!, Buffer.from(JSON.stringify(JSON.parse(packedManifest.read().toString('utf8')), undefined, 2)))).toBe(false)
-  } finally { source.close() }
-  // The final application carries the same rewrites; the check must be told about the prepared tree.
-  expect(() => verifyNextRuntime(resources, FIXTURE_RELEASE.version, target, { afterCodeSigning: true })).toThrow(/changed node_modules\/native-pkg\/Helper\.app\/Contents\/Info\.plist/u)
-  const merge = universalMergeRewrite(app)
-  expect(verifyNextRuntime(resources, FIXTURE_RELEASE.version, target, { afterCodeSigning: true, acceptRewrite: merge.accept })).toEqual(sealed)
-  expect(merge.accepted).toEqual([HELPER_PLIST])
-  // Without the prepared tree nothing can be proved equivalent.
-  expect(() => verifyNextRuntime(resources, FIXTURE_RELEASE.version, target, { acceptRewrite: universalMergeRewrite(join(app, '..', 'elsewhere')).accept })).toThrow(/changed .*Info\.plist/u)
-})
-
 it('rejects an archive that carries no descriptor', async () => {
   const { resources, app } = await assembled(() => {}, false)
   const source = archivedPayload(resources)
@@ -209,34 +188,11 @@ it('refuses to describe a payload whose pnpm has no version', async () => {
   try { expect(() => nextPayloadRelease(source, '44.0.0')).toThrow(/pnpm has no version/u) } finally { source.close() }
 })
 
-it('requires the manifest copy earlier updaters read beside the archive on macOS, and nothing else there', async () => {
+it('requires that no unpacked application directory sits beside the archive', async () => {
   const { resources, app } = await assembled()
-  const source = archivedPayload(resources)
-  try {
-    const shim = join(resources, 'app', 'package.json')
-    const check = (platform: NodeJS.Platform = 'darwin', version = FIXTURE_RELEASE.version): void => verifyUpdaterManifestShim(resources, source, platform, version)
-    // Windows ships no app directory; macOS must carry the copy.
-    expect(() => check('win32')).not.toThrow()
-    expect(() => check()).toThrow(/must ship app\/package\.json/u)
-    mkdirSync(join(resources, 'app'))
-    copyFileSync(join(app, 'package.json'), shim)
-    expect(() => check()).not.toThrow()
-    expect(() => check('win32')).toThrow(/must not ship an unpacked application directory/u)
-    expect(() => check('darwin', '9.9.9-next')).toThrow(/names dsh-desktop-next 2\.0\.0-next, not dsh-desktop-next 9\.9\.9-next/u)
-    // Anything beside the copy would make the directory an unpacked application again.
-    writeFileSync(join(resources, 'app', 'main.js'), 'export {}\n')
-    expect(() => check()).toThrow(/may hold only package\.json/u)
-    rmSync(join(resources, 'app', 'main.js'))
-    // The copy is the archived manifest itself, not a hand-written one, and a regular file of bounded size.
-    writeFileSync(shim, JSON.stringify({ name: 'dsh-desktop-next', version: FIXTURE_RELEASE.version }))
-    expect(() => check()).toThrow(/differs from the archived application manifest/u)
-    rmSync(shim)
-    if (unix) {
-      symlinkSync(join(app, 'package.json'), shim)
-      expect(() => check()).toThrow(/regular file/u)
-      rmSync(shim)
-    }
-    writeFileSync(shim, Buffer.alloc(UPDATER_MANIFEST_SHIM_MAX_BYTES + 1, 0x20))
-    expect(() => check()).toThrow(/exceeds/u)
-  } finally { source.close() }
+  // Windows loads app.asar and reads the packaged manifest inside it, so nothing may shadow it.
+  expect(() => verifyUpdaterManifestShim(resources)).not.toThrow()
+  mkdirSync(join(resources, 'app'))
+  copyFileSync(join(app, 'package.json'), join(resources, 'app', 'package.json'))
+  expect(() => verifyUpdaterManifestShim(resources)).toThrow(/must not ship an unpacked application directory/u)
 })

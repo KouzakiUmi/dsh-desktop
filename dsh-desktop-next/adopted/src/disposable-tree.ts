@@ -1,12 +1,21 @@
 /** Cleanup for caller-owned disposable trees; never traverse junction targets. */
-import { lstatSync, readdirSync, rmdirSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { lstatSync, readdirSync, realpathSync, rmdirSync, unlinkSync } from 'node:fs'
+import { basename, dirname, join, relative } from 'node:path'
 
 const CLEANUP_RETRY_CODES = new Set(['EBUSY', 'EMFILE', 'ENFILE', 'ENOTEMPTY', 'EPERM'])
 
 function removeDisposableEntry(path: string): void {
   try {
     const stat = lstatSync(path)
+    // Directory aliases can carry ordinary-directory lstat metadata.
+    // Resolve only the parent when comparing this entry with its physical target.
+    const directoryAlias = stat.isDirectory() && relative(
+      join(realpathSync.native(dirname(path)), basename(path)), realpathSync.native(path),
+    ) !== ''
+    if (directoryAlias) {
+      rmdirSync(path)
+      return
+    }
     if (stat.isSymbolicLink() || !stat.isDirectory()) {
       unlinkSync(path)
       return

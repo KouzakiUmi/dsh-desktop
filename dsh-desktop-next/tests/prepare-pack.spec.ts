@@ -12,25 +12,25 @@ function writeManifest(root: string, name: string, fields: Record<string, unknow
   writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '1.0.0', ...fields }))
 }
 
-it('adds the Office closure of every CPU to the unpack patterns exactly once', () => {
+it('adds the Office closure of the Windows x64 payload to the unpack patterns exactly once', () => {
   const payload = mkdtempSync(join(tmpdir(), 'desktop-office-unpack-'))
   roots.push(payload)
   writeManifest(payload, '@deepseek-ai/libreoffice-kit', { dependencies: { fflate: '*' },
-    optionalDependencies: { '@deepseek-ai/libreoffice-kit-darwin-arm64': '*', '@deepseek-ai/libreoffice-kit-darwin-x64': '*' } })
+    optionalDependencies: { '@deepseek-ai/libreoffice-kit-win32-x64': '*', '@deepseek-ai/libreoffice-kit-darwin-x64': '*' } })
   writeManifest(payload, 'fflate')
-  writeManifest(payload, '@deepseek-ai/libreoffice-kit-darwin-arm64', { os: ['darwin'], cpu: ['arm64'] })
+  writeManifest(payload, '@deepseek-ai/libreoffice-kit-win32-x64', { os: ['win32'], cpu: ['x64'] })
   writeManifest(payload, '@deepseek-ai/libreoffice-kit-darwin-x64', { os: ['darwin'], cpu: ['x64'] })
   const config: { asarUnpack?: unknown } = { asarUnpack: ['**/*.node', '.desktop-build/payload/assets/**/*'] }
-  // Sorted by package directory, so the kit precedes its engines.
-  const expected = ['**/node_modules/@deepseek-ai/libreoffice-kit/**/*', '**/node_modules/@deepseek-ai/libreoffice-kit-darwin-arm64/**/*',
-    '**/node_modules/@deepseek-ai/libreoffice-kit-darwin-x64/**/*', '**/node_modules/fflate/**/*']
-  expect(applyOfficeUnpack(config, payload, 'darwin')).toEqual(expected)
+  // Sorted by package directory, so the kit precedes its engines, and another platform's engine stays out.
+  const expected = ['**/node_modules/@deepseek-ai/libreoffice-kit/**/*', '**/node_modules/@deepseek-ai/libreoffice-kit-win32-x64/**/*',
+    '**/node_modules/fflate/**/*']
+  expect(applyOfficeUnpack(config, payload, 'win32')).toEqual(expected)
   expect(config.asarUnpack).toEqual(['**/*.node', '.desktop-build/payload/assets/**/*', ...expected])
-  // A universal build packs each CPU in turn; the second pass adds nothing.
-  expect(applyOfficeUnpack(config, payload, 'darwin')).toEqual([])
-  expect(config.asarUnpack).toHaveLength(6)
+  // A second pass over the same target adds nothing.
+  expect(applyOfficeUnpack(config, payload, 'win32')).toEqual([])
+  expect(config.asarUnpack).toHaveLength(5)
   // A single pattern string is kept as the first entry.
   const single: { asarUnpack?: unknown } = { asarUnpack: '**/*.node' }
-  expect(applyOfficeUnpack(single, payload, 'darwin')).toEqual(expected)
+  expect(applyOfficeUnpack(single, payload, 'win32')).toEqual(expected)
   expect(single.asarUnpack).toEqual(['**/*.node', ...expected])
 })

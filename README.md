@@ -5,7 +5,7 @@
 <h1 align="center">DSH Desktop</h1>
 
 <p align="center">
-  <strong>基于 DeepSeek Harness 构建的 Windows 和 macOS 开源桌面客户端。</strong>
+  <strong>基于 DeepSeek Harness 构建的 Windows 开源桌面客户端。</strong>
 </p>
 
 <h3 align="center"><a href="https://dshdesktop.cn">一键下载，开箱即用。</a></h3>
@@ -26,21 +26,20 @@
   <a href="https://github.com/anywhere-labs/deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/anywhere-labs/deepseek-harness-desktop?style=flat&amp;label=%E2%98%85&amp;color=08C" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA44F?style=flat" alt="MIT License"></a>
   <a href="https://discord.gg/TJeGqKRNM"><img src="https://img.shields.io/badge/Discord-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord"></a>
-  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows-4493F8?style=flat-square" alt="Supported platforms: macOS and Windows">
+  <img src="https://img.shields.io/badge/Windows%20x64-4493F8?style=flat-square" alt="Supported platform: Windows x64">
 </p>
 
-DSH Desktop 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 Web UI、Host 服务和插件系统集成到原生桌面应用中。项目固定并原样运行特定上游版本；DSH Desktop 提供窗口、托盘、终端、更新和工作配置，并通过 DeepSeek Harness 提供的插件机制与上游能力组合。
+DSH Desktop 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 Web UI、Host 服务和插件系统集成到原生桌面应用中。项目构建并运行 [upstream.json](<upstream.json>) 记录的 Core 固定提交；当前 Core 分支维护 pi-ai 1.2.0 适配、安全修复与 Markdown 价格渲染修复。DSH Desktop 提供窗口、托盘、终端、更新和工作配置，并通过 DeepSeek Harness 提供的插件机制与 Core 能力组合。
 
 <a id="run"></a>
 
 ## 下载与安装
 
-当前正式安装包支持 Windows x64 和 macOS Universal。无需额外环境，下载安装，一键使用。
+本仓库只构建 Windows x64 安装包。无需额外环境，下载安装，一键使用。
 
 | 平台 | 下载 | 安装方式 |
 | --- | --- | --- |
 | Windows x64 | [下载安装程序](https://www.dshdesktop.cn/api/downloads/windows) | 运行 NSIS 安装程序并按提示完成安装 |
-| macOS Universal | [下载 DMG](https://www.dshdesktop.cn/api/downloads/mac) | 打开 DMG，将 DSH Desktop 拖入 Applications |
 
 详细步骤、插件命令和故障排查见[用户指南](docs/user-guide.md)与[常见问题](docs/faq.md)。
 
@@ -81,9 +80,10 @@ DSH Desktop 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harne
 | 参与统一插件 contract 讨论 | [DSH Community Fabric Draft](dsh-community-fabric/README.zh.md) |
 | 了解统一插件框架为什么这样设计 | [成熟框架与真实插件调研](dsh-community-fabric/docs/research/mature-plugin-frameworks.zh.md) |
 | 查看插件市场的产品与安全设计 | [DSH Community Market](dsh-community-market/README.zh.md) |
-| 了解桌面插件可以使用的能力 | [桌面插件接口说明](dsh-plugin-desktop/docs/plugin-services.zh.md) |
-| 了解桌面应用如何工作 | [架构说明](docs/architecture.md) |
-| 查阅包级构建与发布细节 | [`dsh-plugin-desktop/README.md`](dsh-plugin-desktop/README.md) |
+| 了解桌面插件可以使用的能力 | [插件开发](docs/plugin-development.md) |
+| 同步上游并保留必要修改 | [上游同步维护指南](<docs/upstream-sync.md>) |
+| 查阅早期架构设计 | [历史架构参考](<docs/architecture.md>) |
+| 查阅包级构建与发布细节 | [`dsh-desktop-next/README.md`](dsh-desktop-next/README.md) |
 
 ## 主要功能
 
@@ -124,13 +124,13 @@ Web 服务默认仅监听本机回环地址。开启“用浏览器打开”后�
 
 插件是给 DSH 添加能力的扩展包——模型、工具、界面、工作流都可以做成插件，像搭积木一样自由组合。
 
-DSH Desktop 没有修改上游源码，也不是一个固定写死的外壳。固定版本的上游 DeepSeek Harness 原样运行；桌面壳本身——窗口、托盘、终端、更新、工作配置——作为 DSH 插件接入，并通过 DeepSeek Harness 提供的插件机制与上游能力组合进同一个运行时。从核心 agent 到桌面外壳，整个产品遵守同一条"一切皆插件"的规则：与所固定上游版本兼容的插件可以使用，桌面能力也按插件的方式组合、替换和演进。
+Core 补丁在独立的 Core 仓库中维护，桌面工作区只固定相应提交，不维护另一套核心循环或主前端。桌面壳本身——窗口、托盘、终端、更新、工作配置——作为 DSH 插件接入，并通过 DeepSeek Harness 提供的插件机制与 Core 能力组合进同一个运行时。从核心 agent 到桌面外壳，整个产品遵守同一条"一切皆插件"的规则：匹配所固定 Core API 的插件可以使用，桌面能力也按插件的方式组合、替换和演进。
 
 我们希望插件生态像手机应用一样：每个插件按同一套规则开发，装在一起也能一起工作、互不干扰。
 
 ### 给开发者
 
-与许多其他项目不同，这个项目本身就是一个 DSH [插件](docs/plugin-development.md)：桌面壳与第三方插件使用相同的插件组合机制。Desktop 的插件能力已经可以使用。我们提供了 Desktop 服务，让插件开发者能够把插件与桌面能力集成起来：例如查看和切换工作配置，或在当前配置中安装、更新和移除插件。完整用法见[桌面插件接口说明](dsh-plugin-desktop/docs/plugin-services.zh.md)。为什么选择这样的边界、哪些能力不会暴露给第三方插件，见[为什么做 DSH Desktop](docs/why-desktop.md)和[插件开发指南](docs/plugin-development.md)。
+与许多其他项目不同，这个项目本身就是一个 DSH [插件](docs/plugin-development.md)：桌面壳与第三方插件使用相同的插件组合机制。Desktop 的插件能力已经可以使用。我们提供了 Desktop 服务，让插件开发者能够把插件与桌面能力集成起来：例如查看和切换工作配置，或在当前配置中安装、更新和移除插件。为什么选择这样的边界、哪些能力不会暴露给第三方插件，见[为什么做 DSH Desktop](docs/why-desktop.md)和[插件开发指南](docs/plugin-development.md)。
 
 ## 与 DeepSeek Harness 的关系
 
@@ -143,7 +143,7 @@ DSH Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 - 桌面应用封装
 - 本地服务的启动、停止与恢复
 - 桌面窗口和系统托盘集成
-- macOS、Windows 安装包构建与发布
+- Windows x64 安装包构建与发布
 - 更适合桌面使用的界面体验
 
 如果你希望通过命令行运行 DeepSeek Harness，或者参与其核心功能开发，请优先查看上游仓库。
@@ -162,7 +162,7 @@ DSH Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 ## 开发
 
-稳定版与 Beta 桌面包分别位于 `dsh-plugin-desktop/` 和 `dsh-plugin-desktop-beta/`。外层仓库使用 Yarn，固定的 `deepseek-harness/` 子模块继续使用自己的 pnpm workspace。从仓库根目录执行：
+桌面端源码位于 `dsh-desktop-next/`，它只面向 Windows x64：源码、构建、打包与本地运行时依赖都不接受其他平台。外层仓库使用 Yarn，固定的 `deepseek-harness/` 子模块继续使用自己的 pnpm workspace。从仓库根目录执行：
 
 ```sh
 git submodule update --init --recursive
@@ -170,14 +170,13 @@ corepack yarn install --immutable
 corepack yarn dev
 ```
 
-headless 检查使用 `corepack yarn check`；完整的构建、测试和发布边界见[架构说明](docs/architecture.md)和包级 [`README`](dsh-plugin-desktop/README.md)。如何参与贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+headless 检查使用 `corepack yarn check`；完整的构建、测试和发布边界见[上游同步维护指南](<docs/upstream-sync.md>)和包级 [`README`](dsh-desktop-next/README.md)。如何参与贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-### macOS 麦克风权限
+### Windows 权限
 
-Stable、Beta、Next 的主应用和 Electron Helper 签名直接使用固定上游 checkout 中的
-`deepseek-harness/apps/desktop/scripts/macos-entitlements.plist`。更新子模块版本后，打包会自动使用对应的权限文件，无需维护本地副本；打包前须初始化子模块。各版本的 macOS 配置保留产品自己的麦克风用途说明。
+应用只构建 Windows x64，权限由 Windows 隐私设置管理：应用内授权弹窗只查询当前状态，并在用户点击后打开对应的系统设置页（麦克风为 `ms-settings:privacy-microphone`），不会在应用内弹出系统授权请求。语音输入沿用上游录音流程触发系统授权，语音插件旁不再提供额外权限按钮。
 
-语音输入沿用上游录音流程触发系统授权，语音插件旁不再提供额外权限按钮，Stable/Beta 也不再安装麦克风权限请求桥接或拦截器。
+桌面通知同样需要系统授权；未授权时应用内通知不会弹出。
 
 ## 社区交流
 

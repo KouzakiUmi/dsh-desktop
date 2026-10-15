@@ -1,4 +1,4 @@
-/** Build an unsigned unpacked application for the current host platform. */
+/** Build an unsigned unpacked Windows x64 application for the current host. */
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -6,7 +6,6 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { electronBuilderEnvironment } from './electron-builder-environment.ts'
 import { withoutWindowsSigningSecrets } from './package-win.ts'
-import { withoutMacReleaseSecrets } from './release-preflight.ts'
 
 const require = createRequire(import.meta.url)
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -19,25 +18,23 @@ export const UNSIGNED_DIRECTORY_BUILD_ARGS = Object.freeze([
   '--publish',
   'never',
   '--config.forceCodeSigning=false',
-  '--config.mac.identity=null',
-  '--config.mac.notarize=false',
   '--config.win.signExecutable=false',
 ])
 
 /**
- * Remove every release credential recognized by the native release entry points.
+ * Remove every code-signing credential the Windows packaging entry point recognizes.
  * @param {NodeJS.ProcessEnv} environment
  * @returns {NodeJS.ProcessEnv}
  */
 export function unsignedDirectoryBuildEnvironment(environment) {
   return electronBuilderEnvironment({
-    ...withoutWindowsSigningSecrets(withoutMacReleaseSecrets(environment)),
+    ...withoutWindowsSigningSecrets(environment),
     CSC_IDENTITY_AUTO_DISCOVERY: 'false',
   })
 }
 
 /**
- * Build an unsigned, unpacked application for the current host platform.
+ * Build an unsigned, unpacked application for the current host.
  * @param {{
  *   env?: NodeJS.ProcessEnv,
  *   cwd?: string,

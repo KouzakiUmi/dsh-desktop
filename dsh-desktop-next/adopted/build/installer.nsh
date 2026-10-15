@@ -62,3 +62,39 @@ Var pid
 
   dsh_installer_app_stopped:
 !macroend
+
+; Skip the install-mode wizard page during in-app updates while preserving
+; the existing per-machine or per-user installation scope, so the installer
+; opens directly to the visible extraction progress window.
+;
+; The running-application handoff below must happen here, before this macro can
+; select a machine-wide mode: `multiUserUi.nsh` elevates right after this point,
+; and `installSection.nsh` skips CHECK_APP_RUNNING in the elevated inner
+; instance. An update that only waited in that stage would extract over files
+; the application still holds open, so settle the shutdown first.
+!macro customInstallMode
+  !ifndef BUILD_UNINSTALLER
+    ${if} ${isUpdated}
+      !insertmacro customCheckAppRunning
+      ${if} $hasPerMachineInstallation == "1"
+      ${andIf} $hasPerUserInstallation == "0"
+        StrCpy $isForceMachineInstall "1"
+      ${else}
+        StrCpy $isForceCurrentInstall "1"
+      ${endIf}
+    ${endIf}
+  !endif
+!macroend
+
+; When launched visibly by an in-app update (--updated --force-run), relaunch
+; the updated application and close the installer as soon as extraction finishes
+; without stopping on the Finish wizard page.
+!macro customInstall
+  ${if} ${isUpdated}
+  ${andIf} ${isForceRun}
+  ${andIfNot} ${Silent}
+    HideWindow
+    ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "--updated"
+    !insertmacro quitSuccess
+  ${endIf}
+!macroend

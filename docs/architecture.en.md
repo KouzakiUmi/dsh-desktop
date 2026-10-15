@@ -1,4 +1,6 @@
-# DSH Desktop Architecture
+# DSH Desktop Historical Architecture Reference
+
+> This page preserves early Stable/Beta design context, not the current NEXT directory, platform or public API inventory. Use the [upstream synchronization guide](<upstream-sync.en.md>) for maintenance rules and the [NEXT package reference](<../dsh-desktop-next/README.md>) for runtime and packaging. Do not restore retired products or macOS/Linux entry points from this page.
 
 ## Overview
 

@@ -1,28 +1,25 @@
 /** Read, audit and verify the archived Next payload after Electron Builder assembled it from the prepared tree. */
-import { createHash } from 'node:crypto'
-import { closeSync, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
-import { basename as posixBasename, dirname as posixDirname } from 'node:path/posix'
+import { closeSync, lstatSync, openSync, readFileSync, readSync } from 'node:fs'
+import { join } from 'node:path'
+import { dirname as posixDirname } from 'node:path/posix'
 import { getRawHeader } from '@electron/asar'
 import { nextRuntimeFileExclusion, type NextPackagingTarget } from './runtime-file-policy.ts'
-import { DESKTOP_RUNTIME_FILE, parseDesktopRuntime, verifyPayload, type DesktopRuntimeDescriptor, type DesktopRuntimeFile, type NextRelease, type PayloadEntry, type PayloadSource, type VerifyPayloadOptions } from '../src/runtime-tree.ts'
+import { DESKTOP_RUNTIME_FILE, parseDesktopRuntime, verifyPayload, type DesktopRuntimeDescriptor, type NextRelease, type PayloadEntry, type PayloadSource, type VerifyPayloadOptions } from '../src/runtime-tree.ts'
 
 /** Application-relative directory holding the prepared payload that Electron Builder archives verbatim. */
 export const PAYLOAD_DIR = '.desktop-build/payload'
 
 /**
- * Architectures whose native dependencies one Next package carries.
- * macOS releases are universal and the Yarn tree installs both Darwin CPU variants, so even a
- * single-architecture directory build ships both; Windows releases are x64 only.
+ * Architectures whose native dependencies one Next package carries. Next ships Windows x64 only,
+ * so the payload descriptor records that single target and any other platform fails the build
+ * rather than producing an artifact nothing installs.
  * @param platform - Electron platform being packaged.
- * @param hostArch - Build host architecture, used for platforms without a release target.
  * @returns Platform and architectures recorded in the payload descriptor.
+ * @throws For a platform Next does not package.
  */
-export function nextPackagingTarget(platform: NodeJS.Platform, hostArch: string = process.arch): NextPackagingTarget {
-  if (platform === 'darwin') return { platform, archs: ['arm64', 'x64'] }
-  if (platform === 'win32') return { platform, archs: ['x64'] }
-  return { platform, archs: [hostArch] }
+export function nextPackagingTarget(platform: NodeJS.Platform): NextPackagingTarget {
+  if (platform !== 'win32') throw new Error(`DSH NEXT packages Windows x64 only; received ${platform}`)
+  return { platform, archs: ['x64'] }
 }
 
 interface AsarFile { readonly size: number; readonly offset?: string; readonly executable?: boolean; readonly unpacked?: boolean }
@@ -92,55 +89,15 @@ export function archivedPayload(resourcesDir: string): ArchivedPayload {
 }
 
 /**
- * Resources-relative path of the manifest copy the updaters shipped in 2.0.14-next through
- * 2.0.17-next read. Those updaters verify a downloaded disk image by reading the application
- * manifest at its pre-archive location, `Contents/Resources/app/package.json`, and reject the
- * image when it is missing (`src/update-installer.ts`). Archived releases keep a byte-for-byte
- * copy of the archived manifest there as an extra resource so every shipped updater accepts them.
- */
-export const UPDATER_MANIFEST_SHIM = 'app/package.json'
-
-/** Largest manifest those updaters accept. */
-export const UPDATER_MANIFEST_SHIM_MAX_BYTES = 128 * 1024
-
-/**
- * Check the manifest copy beside the archive. On macOS it must exist as the only entry of
- * `Resources/app`, be a regular file within the size those updaters accept, match the archived
- * manifest byte for byte and name this release. The other platforms must ship no `app` directory:
- * nothing reads one there. Electron loads `app.asar` before `app`, so the copy cannot change which
- * application a launch loads.
+ * Check that no unpacked application directory sits beside the archive. Nothing on Windows reads a
+ * `Resources/app` directory: Electron loads `app.asar`, and the packaged manifest already lives
+ * inside it as the application manifest the runtime and the updater's bundle check read.
  * @param resourcesDir - Application resources directory containing `app.asar`.
- * @param source - Assembled payload the copy must match.
- * @param platform - Electron platform being packaged.
- * @param expectedVersion - Version the manifest must declare.
  */
-export function verifyUpdaterManifestShim(resourcesDir: string, source: PayloadSource, platform: NodeJS.Platform, expectedVersion: string): void {
+export function verifyUpdaterManifestShim(resourcesDir: string): void {
   const directory = join(resourcesDir, 'app')
-  const directoryStat = lstatSync(directory, { throwIfNoEntry: false })
-  if (platform !== 'darwin') {
-    if (directoryStat !== undefined) throw new Error('Next must not ship an unpacked application directory beside app.asar')
-    return
-  }
-  if (directoryStat === undefined || !directoryStat.isDirectory()) {
-    throw new Error(`Next must ship ${UPDATER_MANIFEST_SHIM} beside app.asar: the updaters of releases before the archive read the manifest there`)
-  }
-  const entries = readdirSync(directory)
-  if (entries.length !== 1 || entries[0] !== 'package.json') {
-    throw new Error(`Resources/app may hold only package.json for earlier updaters; found ${entries.length === 0 ? 'nothing' : entries.join(', ')}`)
-  }
-  const shim = join(resourcesDir, ...UPDATER_MANIFEST_SHIM.split('/'))
-  const stat = lstatSync(shim)
-  if (!stat.isFile()) throw new Error(`${UPDATER_MANIFEST_SHIM} must be a regular file`)
-  if (stat.size > UPDATER_MANIFEST_SHIM_MAX_BYTES) {
-    throw new Error(`${UPDATER_MANIFEST_SHIM} exceeds the ${String(UPDATER_MANIFEST_SHIM_MAX_BYTES)} bytes earlier updaters accept`)
-  }
-  const archived = source.entry('package.json')
-  if (archived === undefined) throw new Error('Next payload: the archive carries no application manifest')
-  const shipped = readFileSync(shim)
-  if (!shipped.equals(archived.read())) throw new Error(`${UPDATER_MANIFEST_SHIM} differs from the archived application manifest`)
-  const manifest = JSON.parse(shipped.toString('utf8')) as { name?: unknown; version?: unknown }
-  if (manifest.name !== 'dsh-desktop-next' || manifest.version !== expectedVersion) {
-    throw new Error(`${UPDATER_MANIFEST_SHIM} names ${String(manifest.name)} ${String(manifest.version)}, not dsh-desktop-next ${expectedVersion}`)
+  if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) {
+    throw new Error('Next must not ship an unpacked application directory beside app.asar')
   }
 }
 
@@ -214,7 +171,7 @@ export function verifyNextPayload(source: PayloadSource): void {
   for (const path of ['lib/main.js', 'lib/host.js', 'lib/client.js', 'lib/preload-app.cjs', 'lib/preload-shell.cjs',
     'lib/native-ui/index.html', 'cordis.patch.yml', 'host.cordis.patch.yml',
     'scripts/node-bin/node', 'scripts/node-bin/node.cmd',
-    'assets/tray-iconTemplate.png', 'assets/tray-icon-blue.png']) {
+    'assets/licenses/shadcn.txt', 'assets/tray-icon-blue.png']) {
     if (source.entry(path) === undefined) throw new Error(`Missing Next payload: ${path}`)
   }
   const queued = ['package.json']
@@ -278,74 +235,28 @@ export function nextPayloadRelease(source: PayloadSource, electronVersion: strin
   }
 }
 
-/** Rewrites a verification accepted, for the build log. */
-export interface MergeRewriteTolerance {
-  readonly accept: (file: DesktopRuntimeFile, shipped: Buffer) => boolean
-  /** Paths accepted so far, in verification order. */
-  readonly accepted: readonly string[]
-}
-
-interface PlistParser { parse(xml: string): unknown }
-
-// The parser @electron/universal itself writes the merged plists with.
-const plistParser = (): PlistParser => createRequire(createRequire(import.meta.url).resolve('@electron/universal/package.json'))('plist') as PlistParser
-
-/**
- * The one rewrite a universal macOS build makes inside the payload: @electron/universal parses
- * every `Info.plist` in the application, including those of nested bundles among the unpacked
- * files, injects the archive integrity and serializes it again. Such a file is accepted when the
- * prepared copy still matches its record and both parse to the same content apart from
- * `ElectronAsarIntegrity`, the same equality @electron/universal demands of the two CPU builds.
- * @param payloadDir - Prepared payload the descriptor was sealed from.
- * @returns Tolerance for {@link verifyPayload}, recording what it accepted.
- */
-export function universalMergeRewrite(payloadDir: string): MergeRewriteTolerance {
-  const accepted: string[] = []
-  const content = (xml: Buffer): string => {
-    const { ElectronAsarIntegrity: _integrity, ...rest } = plistParser().parse(xml.toString('utf8')) as Record<string, unknown>
-    return JSON.stringify(rest)
-  }
-  return {
-    accepted,
-    accept: (file, shipped) => {
-      if (posixBasename(file.path) !== 'Info.plist') return false
-      const preparedFile = join(payloadDir, ...file.path.split('/'))
-      if (!existsSync(preparedFile)) return false
-      const prepared = readFileSync(preparedFile)
-      if (prepared.byteLength !== file.bytes || createHash('sha256').update(prepared).digest('hex') !== file.sha256) return false
-      try { if (content(prepared) !== content(shipped)) return false } catch { return false }
-      accepted.push(file.path)
-      return true
-    },
-  }
-}
-
 /** Outcome of the cross-check between an assembled archive and the prepared tree. */
 export interface ArchiveCrossCheck {
   readonly descriptor: DesktopRuntimeDescriptor
-  /** `Info.plist` files the universal merge rewrote; empty for a single-CPU build. */
-  readonly rewrittenPlists: readonly string[]
 }
 
 /**
  * Cross-check an assembled archive against the descriptor the prepared tree was sealed with:
  * the archive must carry that descriptor byte for byte, and its files must match the inventory
- * exactly, apart from the `Info.plist` rewrites of {@link universalMergeRewrite}. The prepared
- * tree and the archive are two independent copies of the installation.
+ * exactly. The prepared tree and the archive are two independent copies of the installation.
  * @param source - Assembled archive.
  * @param preparedDescriptorFile - Descriptor file inside the prepared payload.
  * @param expectedVersion - Version the payload must declare.
  * @param target - Platform and architectures of the package.
- * @returns The verified descriptor and the rewrites tolerated.
+ * @returns The verified descriptor.
  */
 export function verifyArchiveAgainstPrepared(source: ArchivedPayload, preparedDescriptorFile: string, expectedVersion: string, target: NextPackagingTarget): ArchiveCrossCheck {
   const prepared = readFileSync(preparedDescriptorFile)
   const archived = source.entry(DESKTOP_RUNTIME_FILE)?.read()
   if (archived === undefined) throw new Error(`Next payload: ${DESKTOP_RUNTIME_FILE} is missing from the archive`)
   if (!archived.equals(prepared)) throw new Error('Next payload: the archived descriptor differs from the prepared one')
-  const tolerance = universalMergeRewrite(dirname(preparedDescriptorFile))
-  const descriptor = verifyPayload(source, parseDesktopRuntime(JSON.parse(prepared.toString('utf8'))), expectedVersion, target, { acceptRewrite: tolerance.accept })
-  return { descriptor, rewrittenPlists: tolerance.accepted }
+  const descriptor = verifyPayload(source, parseDesktopRuntime(JSON.parse(prepared.toString('utf8'))), expectedVersion, target)
+  return { descriptor }
 }
 
 /**

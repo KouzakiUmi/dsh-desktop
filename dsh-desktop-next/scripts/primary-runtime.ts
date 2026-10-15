@@ -1,8 +1,8 @@
-/** Prepare pinned, relocatable script interpreters without installing into the build host; ported from the upstream builder. */
+/** Prepare the pinned, relocatable Windows x64 interpreter payload without installing into the build host; ported from the upstream builder. */
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { closeSync, cpSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -30,8 +30,11 @@ export interface PrimaryRuntimeArtifact {
   readonly wheels: readonly PrimaryRuntimeWheel[]
 }
 
-/** Targets the upstream lock pins. */
-export const PRIMARY_RUNTIME_TARGETS = ['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64', 'linux-arm64'] as const
+/**
+ * Targets the product ships. Next packages Windows x64 only, so the lock is read for that single
+ * target even though the upstream checkout pins every platform it builds for.
+ */
+export const PRIMARY_RUNTIME_TARGETS = ['win-x64'] as const
 /** A locked interpreter and wheel target. */
 export type PrimaryRuntimeTarget = (typeof PRIMARY_RUNTIME_TARGETS)[number]
 
@@ -72,7 +75,7 @@ function isDistributionMap(value: unknown): value is Record<string, string> {
  * Validate the decoded upstream lock without copying it, so the key order that forms the payload identity survives.
  * @param value - Decoded `lock.json`.
  * @returns The typed lock.
- * @throws For a lock missing a pinned target or carrying malformed digests.
+ * @throws For a lock missing the pinned Windows target or carrying malformed digests.
  */
 export function parsePrimaryRuntimeLock(value: unknown): PrimaryRuntimeLock {
   if (!isRecord(value) || !isRecord(value.targets) || !Array.isArray(value.wheels)) throw new Error('primary runtime lock: malformed document')
@@ -140,7 +143,7 @@ export async function downloadPrimaryRuntimeAsset(url: string, sha256: string, c
 /**
  * Prepare the locked standalone Node independently of Python and pnpm.
  * @param target - Target interpreter platform.
- * @param destination - Directory receiving bin/node and LICENSE.
+ * @param destination - Directory receiving bin/node.exe and LICENSE.
  * @param cache - Verified archive cache.
  * @param lock - Upstream download lock.
  * @returns Resolves after extracting the interpreter.
@@ -151,12 +154,10 @@ export async function downloadNodeRuntime(target: PrimaryRuntimeTarget, destinat
   const archive = await downloadPrimaryRuntimeAsset(`https://nodejs.org/dist/v${lock.nodeVersion}/${filename}`, artifact.nodeSha256, cache)
   const staging = mkdtempSync(join(tmpdir(), 'dsh-node-'))
   try {
-    if (target === 'win-x64') await extractZip(archive, { dir: staging })
-    else await extractTar({ file: archive, cwd: staging })
-    const source = join(staging, filename.replace(/\.(?:zip|tar\.gz)$/u, ''))
+    await extractZip(archive, { dir: staging, onEntry: entry => assertRegularZipEntry(entry) })
+    const source = join(staging, filename.replace(/\.zip$/u, ''))
     mkdirSync(join(destination, 'bin'), { recursive: true })
-    cpSync(join(source, ...(target === 'win-x64' ? ['node.exe'] : ['bin', 'node'])),
-      join(destination, 'bin', target === 'win-x64' ? 'node.exe' : 'node'))
+    cpSync(join(source, 'node.exe'), join(destination, 'bin', 'node.exe'))
     cpSync(join(source, 'LICENSE'), join(destination, 'LICENSE'))
   } finally {
     rmSync(staging, { recursive: true, force: true })
@@ -170,7 +171,7 @@ async function pythonArchive(target: PrimaryRuntimeTarget, cache: string, lock: 
 }
 
 /**
- * Identify the inputs that assemble one target's payload, excluding unrelated target locks.
+ * Identify the inputs that assemble the payload, excluding unrelated target locks.
  * @param target - Runtime target whose archives are installed.
  * @param runtimeLock - Locked interpreter and wheel inputs.
  * @param pnpmVersion - Package-manager version copied into the payload.
@@ -187,6 +188,23 @@ export function primaryRuntimePayloadDigest(target: PrimaryRuntimeTarget, runtim
 }
 
 /**
+ * Reject a ZIP entry that could place something other than a plain file or directory in the
+ * extracted tree. The pinned interpreter archives, the Electron distribution and every locked
+ * wheel are ordinary files, so a symbolic link or a device node recorded in one of them is either
+ * corruption or tampering: extracting it would let the payload write outside the payload root.
+ * Windows-created archives carry no Unix mode at all, which is accepted as a plain entry.
+ * @param entry - Entry `extract-zip` is about to write.
+ * @throws For a symbolic link or any other entry type the payload never ships.
+ */
+export function assertRegularZipEntry(entry: { readonly fileName: string; readonly externalFileAttributes: number }): void {
+  const fileType = ((entry.externalFileAttributes >>> 16) & 0xffff) & 0xf000
+  if (fileType === 0xa000) throw new Error(`primary runtime: archive entry is a symbolic link: ${entry.fileName}`)
+  if (fileType !== 0 && fileType !== 0x8000 && fileType !== 0x4000) {
+    throw new Error(`primary runtime: archive entry has an unsupported type: ${entry.fileName}`)
+  }
+}
+
+/**
  * Unpack a locked library wheel, retaining auxiliary scripts in its distribution data directory.
  * @param archive - Hash-verified wheel archive.
  * @param destination - Absolute site-packages directory.
@@ -196,6 +214,7 @@ export async function unpackPrimaryRuntimeWheel(archive: string, destination: st
   await extractZip(archive, {
     dir: destination,
     onEntry: (entry) => {
+      assertRegularZipEntry(entry)
       const [directory, scheme] = entry.fileName.split('/')
       if (directory?.endsWith('.data') && scheme !== '' && scheme !== 'scripts') {
         throw new Error(`primary runtime: wheel requires unsupported installation paths: ${entry.fileName}`)
@@ -232,7 +251,7 @@ export interface PreparePrimaryRuntimeOptions {
 }
 
 /**
- * Materialize locked interpreters, libraries and Office resources without executing target code.
+ * Materialize the locked interpreters, libraries and Office resources without executing target code.
  * The pnpm distribution is the one installed beside this package, the same one the shell bundles.
  * @param options - Explicit target and output locations.
  * @returns Resolves after the complete payload and skills have been copied to the output directory.
@@ -258,8 +277,8 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     await extractTar({ file: await pythonArchive(target, paths.downloads, lock), cwd: dependencies })
     const manifest: PrimaryRuntimeManifest = {
       desktopVersion: options.version,
-      platform: target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin',
-      arch: target.endsWith('-arm64') ? 'arm64' : 'x64',
+      platform: 'win32',
+      arch: 'x64',
       payloadDigest: primaryRuntimePayloadDigest(target, lock, pnpmVersion),
       python: lock.pythonVersion,
       node: lock.nodeVersion,
@@ -284,50 +303,29 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
   await prepareOfficeSkillAssets(assets, join(paths.runtime, 'office-skills'))
 }
 
-/**
- * Whether this Apple Silicon host can run Intel executables.
- * @returns True when Rosetta accepts an x86_64 launch.
- */
-export function rosettaAvailable(): boolean {
-  if (process.platform !== 'darwin' || process.arch !== 'arm64') return false
-  return spawnSync('/usr/bin/arch', ['-x86_64', '/usr/bin/true'], { stdio: 'ignore' }).status === 0
-}
-
 /** Execution settings for one payload smoke. */
 export interface PrimaryRuntimeSmokeOptions {
   /** Scrubbed subprocess environment; defaults to excluding credential-shaped names. */
   readonly environment?: NodeJS.ProcessEnv
-  /** Command prefix that runs a foreign-CPU payload, such as `/usr/bin/arch -x86_64` under Rosetta. */
-  readonly launcher?: readonly string[]
 }
 
 /**
  * Execute the payload's interpreters, package manager and Python libraries.
- * @param root - Final payload directory, including any platform signatures.
- * @param options - Environment and launcher.
- * @returns False when the payload targets another platform or CPU and no launcher runs it; true after the checks pass.
+ * @param root - Final payload directory.
+ * @param options - Environment for the child processes.
+ * @returns False when the payload targets another platform or CPU; true after the checks pass.
  */
 export function smokePrimaryRuntime(root: string, options: PrimaryRuntimeSmokeOptions = {}): boolean {
   const manifest = parsePrimaryRuntime(JSON.parse(readFileSync(join(root, 'runtime.json'), 'utf8')))
-  const launcher = options.launcher ?? []
-  if (manifest.platform !== process.platform || (manifest.arch !== process.arch && launcher.length === 0)) return false
+  if (manifest.platform !== process.platform || manifest.arch !== process.arch) return false
   if (Object.keys(manifest.pythonPackages).length === 0) throw new Error('primary runtime: missing Python distribution versions; prepare the payload before running its smoke checks.')
   const entries = workspaceDependencyPaths(root, manifest)
-  if (manifest.platform !== 'win32') {
-    const interpreter = `python${manifest.python.split('.').slice(0, 2).join('.')}`
-    for (const name of ['python', 'python3']) {
-      const path = join(dirname(entries.python), name)
-      if (!lstatSync(path).isSymbolicLink() || readlinkSync(path) !== interpreter) {
-        throw new Error(`primary runtime: Python commands must be relative aliases of ${interpreter}`)
-      }
-    }
-    if (!lstatSync(join(dirname(entries.python), interpreter)).isFile()) throw new Error('primary runtime: versioned Python must be a regular file')
-  }
   if (entries.node === undefined || entries.pnpm === undefined) throw new Error('primary runtime: the Next payload must declare node and pnpm components.')
   const environment = options.environment ?? Object.fromEntries(Object.entries(process.env).filter(([name]) => !/(?:KEY|SECRET|TOKEN|PASSWORD)/iu.test(name)))
+  // Run inside the bundled package, independent of the caller's packageManager declaration.
+  const cwd = dirname(entries.pnpm)
   const run = (file: string, args: readonly string[]): void => {
-    const [command, ...prefix] = launcher.length === 0 ? [file] : [...launcher, file]
-    execFileSync(command!, [...prefix, ...args], { stdio: 'inherit', timeout: 120_000, env: environment })
+    execFileSync(file, args, { cwd, stdio: 'inherit', timeout: 120_000, env: environment })
   }
   run(entries.python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'])
   run(entries.python, ['-I', '-B', join(UPSTREAM_PRIMARY_RUNTIME, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
@@ -336,55 +334,4 @@ export function smokePrimaryRuntime(root: string, options: PrimaryRuntimeSmokeOp
   run(entries.node, ['-e', `if (process.versions.node !== ${JSON.stringify(manifest.node)}) process.exit(1)`])
   run(entries.node, [entries.pnpm, '--version'])
   return true
-}
-
-const MACH_O_MAGICS = new Set(['cafebabe', 'cafebabf', 'cefaedfe', 'cffaedfe', 'feedface', 'feedfacf', 'bebafeca', 'bfbafeca'])
-
-function readHead(path: string, bytes: number): Buffer {
-  const descriptor = openSync(path, 'r')
-  try {
-    const head = Buffer.alloc(bytes)
-    return head.subarray(0, readSync(descriptor, head, 0, bytes, 0))
-  } finally { closeSync(descriptor) }
-}
-
-/**
- * Whether a file starts with a Mach-O or fat archive magic.
- * @param path - Regular file.
- * @returns True for native macOS code that must be signed.
- */
-export function isMachO(path: string): boolean {
-  const head = readHead(path, 4)
-  return head.length === 4 && MACH_O_MAGICS.has(head.toString('hex'))
-}
-
-/** CPU a Mach-O slice targets; `other` covers CPUs Next does not ship. */
-export type MachOArchitecture = 'arm64' | 'x64' | 'other'
-
-function cpuArchitecture(cputype: number): MachOArchitecture {
-  return cputype === 0x0100000c ? 'arm64' : cputype === 0x01000007 ? 'x64' : 'other'
-}
-
-/**
- * Read the CPU types a Mach-O file carries, one per slice of a fat archive.
- * @param path - Regular file.
- * @returns CPU types in header order; empty for a file that is not Mach-O.
- */
-export function machOArchitectures(path: string): readonly MachOArchitecture[] {
-  const head = readHead(path, 4096)
-  if (head.length < 8) return []
-  const magic = head.subarray(0, 4).toString('hex')
-  switch (magic) {
-    case 'cffaedfe': case 'cefaedfe': return [cpuArchitecture(head.readUInt32LE(4))]
-    case 'feedfacf': case 'feedface': return [cpuArchitecture(head.readUInt32BE(4))]
-    case 'cafebabe': case 'cafebabf': {
-      const stride = magic === 'cafebabe' ? 20 : 32
-      const slices: MachOArchitecture[] = []
-      for (let index = 0, offset = 8; index < head.readUInt32BE(4) && offset + 4 <= head.length; index++, offset += stride) {
-        slices.push(cpuArchitecture(head.readUInt32BE(offset)))
-      }
-      return slices
-    }
-    default: return []
-  }
 }

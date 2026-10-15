@@ -5,7 +5,7 @@ import { basename, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { expect, it } from 'vitest'
 import {
-  downloadPrimaryRuntimeAsset, machOArchitectures, parsePrimaryRuntimeLock, prepareOfficeSkillAssets, primaryRuntimePayloadDigest,
+  assertRegularZipEntry, downloadPrimaryRuntimeAsset, parsePrimaryRuntimeLock, prepareOfficeSkillAssets, primaryRuntimePayloadDigest,
   readPrimaryRuntimeLock, smokePrimaryRuntime, unpackPrimaryRuntimeWheel, type PrimaryRuntimeLock,
 } from '../scripts/primary-runtime.ts'
 
@@ -17,15 +17,15 @@ const libraryWheel = Buffer.from('UEsDBAoAAAAAAASeLl0sYMPjDAAAAAwAAAAJAAAAc2FtcG
 const relocatedWheel = Buffer.from('UEsDBAoAAAAAAASeLl3x0Nj9FAAAABQAAAAeAAAAc2FtcGxlLTEuMC5kYXRhL3NjcmlwdHMvc2FtcGxlcmVxdWlyZXMgcmVsb2NhdGlvbgpQSwECHgMKAAAAAAAEni5d8dDY/RQAAAAUAAAAHgAAAAAAAAABAAAApIEAAAAAc2FtcGxlLTEuMC5kYXRhL3NjcmlwdHMvc2FtcGxlUEsFBgAAAAABAAEATAAAAFAAAAAAAA==', 'base64')
 const externalLibraryWheel = Buffer.from('UEsDBBQAAAAAAAAAIVyBOE8OHAAAABwAAAAhAAAAc2FtcGxlLTEuMC5kYXRhL3B1cmVsaWIvc2FtcGxlLnB5cmVxdWlyZXMgbGlicmFyeSByZWxvY2F0aW9uClBLAQIUAxQAAAAAAAAAIVyBOE8OHAAAABwAAAAhAAAAAAAAAAAAAACAAQAAAABzYW1wbGUtMS4wLmRhdGEvcHVyZWxpYi9zYW1wbGUucHlQSwUGAAAAAAEAAQBPAAAAWwAAAAAA', 'base64')
 
-it('pins the Darwin and Windows targets Next packages and the distributions the Office smoke imports', () => {
-  for (const target of ['mac-arm64', 'mac-x64', 'win-x64'] as const) expect(lock.targets[target].wheels.length).toBeGreaterThan(0)
+it('pins the Windows target Next packages and the distributions the Office smoke imports', () => {
+  expect(lock.targets['win-x64'].wheels.length).toBeGreaterThan(0)
   for (const name of ['numpy', 'pandas', 'python-docx', 'python-pptx', 'openpyxl', 'Pillow', 'lxml', 'XlsxWriter']) expect(lock.pythonPackages).toHaveProperty(name)
 })
 
-it('rejects a lock missing a pinned target or carrying a malformed digest', () => {
+it('rejects a lock missing the pinned Windows target or carrying a malformed digest', () => {
   const missing = mutableLock()
-  Reflect.deleteProperty(missing.targets, 'mac-x64')
-  expect(() => parsePrimaryRuntimeLock(missing)).toThrow('malformed target mac-x64')
+  Reflect.deleteProperty(missing.targets, 'win-x64')
+  expect(() => parsePrimaryRuntimeLock(missing)).toThrow('malformed target win-x64')
   const corrupt = mutableLock()
   corrupt.targets['win-x64'].pythonSha256 = 'not a digest'
   expect(() => parsePrimaryRuntimeLock(corrupt)).toThrow('malformed target win-x64')
@@ -46,10 +46,9 @@ it.each(Object.entries(lock.targets))('records every locked wheel distribution a
   expect(Object.fromEntries(distributions)).toEqual(Object.fromEntries(declared))
 })
 
-it('keeps a target payload identity independent of other target archives', () => {
+it('keeps the payload identity tied to the locked archives of the Windows target', () => {
   const changed = mutableLock()
   changed.targets['win-x64'].wheels[0]!.sha256 = 'a'.repeat(64)
-  expect(primaryRuntimePayloadDigest('mac-arm64', changed, '11.7.0')).toBe(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0'))
   expect(primaryRuntimePayloadDigest('win-x64', changed, '11.7.0')).not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0'))
 })
 
@@ -57,10 +56,10 @@ it('invalidates payload identity for shared wheels, package versions and package
   const wheel = mutableLock(), distribution = mutableLock()
   wheel.wheels[0]!.sha256 = 'a'.repeat(64)
   distribution.pythonPackages['python-docx'] = '1.2.1'
-  const original = primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0')
-  expect(primaryRuntimePayloadDigest('mac-arm64', wheel, '11.7.0')).not.toBe(original)
-  expect(primaryRuntimePayloadDigest('mac-arm64', distribution, '11.7.0')).not.toBe(original)
-  expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
+  const original = primaryRuntimePayloadDigest('win-x64', lock, '11.7.0')
+  expect(primaryRuntimePayloadDigest('win-x64', wheel, '11.7.0')).not.toBe(original)
+  expect(primaryRuntimePayloadDigest('win-x64', distribution, '11.7.0')).not.toBe(original)
+  expect(primaryRuntimePayloadDigest('win-x64', lock, '11.7.1')).not.toBe(original)
 })
 
 it('reports missing distribution metadata before trying to execute a stale native payload', async () => {
@@ -72,7 +71,7 @@ it('reports missing distribution metadata before trying to execute a stale nativ
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-it('reports a payload of another platform or CPU as not executed unless a launcher runs it', async () => {
+it('reports a payload of another platform or CPU as not executed', async () => {
   const root = await mkdtemp(join(tmpdir(), 'desktop-foreign-runtime-'))
   try {
     await writeFile(join(root, 'runtime.json'), JSON.stringify({ desktopVersion: '1.0.0', platform: process.platform === 'win32' ? 'darwin' : 'win32', arch: 'x64',
@@ -81,8 +80,6 @@ it('reports a payload of another platform or CPU as not executed unless a launch
     await writeFile(join(root, 'runtime.json'), JSON.stringify({ desktopVersion: '1.0.0', platform: process.platform, arch: process.arch === 'x64' ? 'arm64' : 'x64',
       python: '3.12.14', node: '24.21.0', pnpm: '11.8.0', pythonPackages: { numpy: '2.3.5' } }))
     expect(smokePrimaryRuntime(root)).toBe(false)
-    // A launcher commits to executing the foreign CPU; the missing interpreter is then an error.
-    expect(() => smokePrimaryRuntime(root, { launcher: ['/usr/bin/arch', '-x86_64'] })).toThrow()
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
@@ -155,7 +152,7 @@ it('copies complete Office resources outside the application archive and removes
   const root = await mkdtemp(join(tmpdir(), 'desktop-office-assets-'))
   try {
     const source = join(root, 'package', 'assets')
-    const destination = join(root, 'Contents', 'Resources', 'runtime', 'arm64', 'office-skills')
+    const destination = join(root, 'Contents', 'Resources', 'runtime', 'x64', 'office-skills')
     for (const name of ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']) {
       await mkdir(join(source, name), { recursive: true })
       await writeFile(join(source, name, 'SKILL.md'), `# ${name}\n`)
@@ -170,19 +167,12 @@ it('copies complete Office resources outside the application archive and removes
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-it('reads the CPU of thin Mach-O files and every slice of a fat archive', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'desktop-mach-o-'))
-  try {
-    await writeFile(join(root, 'arm64'), Buffer.from('cffaedfe0c000001000000000200000000000000', 'hex'))
-    await writeFile(join(root, 'x64'), Buffer.from('cffaedfe07000001000000000200000000000000', 'hex'))
-    await writeFile(join(root, 'fat'), Buffer.concat([Buffer.from('cafebabe00000002', 'hex'),
-      Buffer.from('01000007000000030000100000001000000000000', 'hex').subarray(0, 20), Buffer.from('0100000c000000000000200000001000000000000', 'hex').subarray(0, 20)]))
-    await writeFile(join(root, 'script.py'), 'print()\n')
-    await writeFile(join(root, 'short'), Buffer.from('cffa', 'hex'))
-    expect(machOArchitectures(join(root, 'arm64'))).toEqual(['arm64'])
-    expect(machOArchitectures(join(root, 'x64'))).toEqual(['x64'])
-    expect(machOArchitectures(join(root, 'fat'))).toEqual(['x64', 'arm64'])
-    expect(machOArchitectures(join(root, 'script.py'))).toEqual([])
-    expect(machOArchitectures(join(root, 'short'))).toEqual([])
-  } finally { await rm(root, { recursive: true, force: true }) }
+it('refuses a zip entry that is not a plain file or directory', () => {
+  // The Unix mode lives in the high half of the external attributes; 0o120777 is a symbolic link.
+  expect(() => assertRegularZipEntry({ fileName: 'link', externalFileAttributes: (0o120777 << 16) >>> 0 })).toThrow('symbolic link')
+  expect(() => assertRegularZipEntry({ fileName: 'dev', externalFileAttributes: (0o020666 << 16) >>> 0 })).toThrow('unsupported type')
+  expect(() => assertRegularZipEntry({ fileName: 'file', externalFileAttributes: (0o100644 << 16) >>> 0 })).not.toThrow()
+  expect(() => assertRegularZipEntry({ fileName: 'dir/', externalFileAttributes: (0o040755 << 16) >>> 0 })).not.toThrow()
+  // A Windows-created archive records no Unix mode at all.
+  expect(() => assertRegularZipEntry({ fileName: 'file.txt', externalFileAttributes: 0 })).not.toThrow()
 })

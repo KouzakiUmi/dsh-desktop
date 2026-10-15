@@ -11,7 +11,7 @@ import { completeApplication, FIXTURE_RELEASE, writeApplication, writePackage } 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 const unix = process.platform !== 'win32'
-const target = nextPackagingTarget(process.platform, process.arch)
+const target = nextPackagingTarget('win32')
 
 /**
  * A development checkout: the application with its build output and development files, the

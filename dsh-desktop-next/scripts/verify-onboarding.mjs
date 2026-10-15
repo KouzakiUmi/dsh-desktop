@@ -24,7 +24,7 @@ writeFileSync(join(profiles.directory('desktop'), 'cordis.patch.yml'), JSON.stri
   { id: 'ui-settings-account', config: { step: officialPending ? 'welcome' : 'done', completion: officialPending ? null : 'skipped' } },
 ]), { mode: 0o600 })
 const host = new DesktopHostProcess(process.execPath, root, profiles.directory('desktop'), undefined,
-  { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }, undefined, undefined, undefined, join(root, 'lib/host.js'))
+  { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }, undefined, undefined, undefined, join(root, 'scripts/fixtures/isolated-user-host.mjs'))
 const screenshots = join(root, '.desktop-next/verification')
 mkdirSync(screenshots, { recursive: true })
 let browser, page
@@ -48,7 +48,7 @@ try {
   await context.exposeFunction('__readSetup', () => {
     if (rejectRead) { rejectRead = false; throw new Error('Fixture: setup state unavailable') }
     return { required, accountPending, edition: 'next', profile: 'desktop', computerUse: false,
-      input: { ...selection, appVersion: '2.0.14-next', platform: 'darwin', profileName: 'desktop' } }
+      input: { ...selection, appVersion: '2.0.14-next', platform: 'win32', profileName: 'desktop' } }
   })
   await context.exposeFunction('__finishSetup', (profile, value) => {
     if (rejectSave) { rejectSave = false; throw new Error('Fixture: could not save Profile') }
@@ -85,9 +85,8 @@ try {
   const back = () => navigate(/^(上一步|Back)$/, -1)
   const open = async () => {
     await page.goto(origin); await surface.waitFor()
-    // Activate native macOS CSS after the browser-only Host boot (which has no
-    // native shortcut service). Click tests alone do not cover app drag regions.
-    await page.evaluate(() => { document.documentElement.dataset.platform = 'darwin' })
+    // The shell reports the platform it packages; the official surface renders its Windows chrome.
+    await page.evaluate(() => { document.documentElement.dataset.platform = 'win32' })
   }
   await open()
   await surface.getByRole('alert').filter({ hasText: 'setup state unavailable' }).waitFor()
@@ -101,16 +100,12 @@ try {
   const backBounds = await surface.getByRole('button', { name: /^(上一步|Back)$/ }).boundingBox()
   const progressBounds = await surface.locator('.next-onboarding-progress').boundingBox()
   const mainBounds = await surface.locator('main').boundingBox()
-  assert.ok(progressBounds.y >= 36 && progressBounds.y + progressBounds.height <= mainBounds.y, 'Progress belongs above the content, clear of traffic lights')
+  assert.ok(progressBounds.y >= 36 && progressBounds.y + progressBounds.height <= mainBounds.y, 'Progress belongs above the content')
   assert.ok(backBounds.y >= mainBounds.y + mainBounds.height, 'Official Back navigation belongs below the content')
-  for (const element of await surface.locator('.next-onboarding-choice, [role="radio"]').all()) {
-    assert.equal(await element.evaluate(node => getComputedStyle(node).getPropertyValue('-webkit-app-region')), 'no-drag', 'Choice cards and radio controls must subtract the official drag region')
-  }
   await surface.getByText('dsh-market', { exact: true }).click()
-  await page.screenshot({ path: join(screenshots, 'onboarding-official-market-macos.png') })
+  await page.screenshot({ path: join(screenshots, 'onboarding-official-market.png') })
   await next()
   await surface.getByRole('switch').check()
-  assert.equal(await surface.getByRole('switch').evaluate(node => getComputedStyle(node).getPropertyValue('-webkit-app-region')), 'no-drag')
   assert.equal(await surface.locator('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true)
   await back()
   assert.equal(await surface.getByRole('radio', { name: 'dsh-market', exact: true }).isChecked(), true)

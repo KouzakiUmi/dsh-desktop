@@ -5,7 +5,7 @@
 <h1 align="center">DSH Desktop</h1>
 
 <p align="center">
-  <strong>An open-source desktop client for Windows and macOS, built on DeepSeek Harness.</strong>
+  <strong>An open-source Windows desktop client built on DeepSeek Harness.</strong>
 </p>
 
 <h3 align="center"><a href="https://dshdesktop.cn">One-click download, ready to use out of the box.</a></h3>
@@ -26,21 +26,20 @@
   <a href="https://github.com/anywhere-labs/deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/anywhere-labs/deepseek-harness-desktop?style=flat&amp;label=%E2%98%85&amp;color=08C" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA44F?style=flat" alt="MIT License"></a>
   <a href="https://discord.gg/TJeGqKRNM"><img src="https://img.shields.io/badge/Discord-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord"></a>
-  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows-4493F8?style=flat-square" alt="Supported platforms: macOS and Windows">
+  <img src="https://img.shields.io/badge/Windows%20x64-4493F8?style=flat-square" alt="Supported platform: Windows x64">
 </p>
 
-DSH Desktop integrates the local Web UI, Host service, and plugin system from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) into a native desktop application. It runs a pinned upstream version unchanged, while DSH Desktop provides the window, tray, terminal, updates, and work profiles through the plugin mechanism provided by DeepSeek Harness.
+DSH Desktop integrates the local Web UI, Host service, and plugin system from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) into a native desktop application. It builds and runs the Core commit recorded in [upstream.json](<upstream.json>); the configured Core branch maintains the pi-ai 1.2.0 adaptation, security fixes and Markdown price-rendering fixes. DSH Desktop provides the window, tray, terminal, updates and work profiles through DeepSeek Harness's plugin mechanism.
 
 <a id="run"></a>
 
 ## Download and install
 
-Current release installers support Windows x64 and macOS Universal. No extra environment is needed — download, install, and start using it with one click.
+This repository builds Windows x64 installers only. No extra environment is needed — download, install, and start using it with one click.
 
 | Platform | Download | Installation |
 | --- | --- | --- |
 | Windows x64 | [Download installer](https://www.dshdesktop.cn/api/downloads/windows) | Run the NSIS installer and follow its prompts |
-| macOS Universal | [Download DMG](https://www.dshdesktop.cn/api/downloads/mac) | Open the DMG and drag DSH Desktop into Applications |
 
 See the [user guide](docs/user-guide.en.md) and [FAQ](docs/faq.en.md) for plugin commands, platform details, and troubleshooting.
 
@@ -81,9 +80,10 @@ Ordinary users can start with the [user guide](docs/user-guide.en.md); the devel
 | Join the unified plugin-contract discussion | [DSH Community Fabric Draft](dsh-community-fabric/README.md) |
 | See the research behind the unified plugin framework | [Framework and real-plugin research](dsh-community-fabric/docs/research/mature-plugin-frameworks.md) |
 | Read the plugin market product and safety design | [DSH Community Market](dsh-community-market/README.md) |
-| See what Desktop plugins can use | [Desktop plugin API](dsh-plugin-desktop/docs/plugin-services.md) |
-| Understand how the desktop works | [Architecture](docs/architecture.en.md) |
-| Read package-level build and release details | [`dsh-plugin-desktop/README.md`](dsh-plugin-desktop/README.md) |
+| See what Desktop plugins can use | [Plugin development](docs/plugin-development.en.md) |
+| Synchronize upstream while preserving required changes | [Upstream synchronization guide](<docs/upstream-sync.en.md>) |
+| Review early architecture decisions | [Historical architecture reference](<docs/architecture.en.md>) |
+| Read package-level build and release details | [`dsh-desktop-next/README.md`](dsh-desktop-next/README.md) |
 
 ## Features
 
@@ -124,13 +124,13 @@ The automatic updater's fixed version-check request sends the installed version 
 
 Plugins are extensions that add capabilities to DSH — models, tools, interfaces, and workflows can all be plugins, combined like building blocks.
 
-DSH Desktop does not modify upstream source, and it is not a fixed, hardcoded shell. A pinned upstream DeepSeek Harness version runs unchanged; the desktop shell itself — the window, tray, terminal, updates, and work profiles — integrates as a DSH plugin through the plugin mechanism provided by DeepSeek Harness. From the core agent to the desktop shell, the whole product follows the same "everything is a plugin" rule: plugins compatible with the pinned upstream version can be used, while desktop capabilities are composed, replaced, and evolved in the same way.
+Core patches are maintained in the separate Core repository; the desktop workspace pins that commit rather than maintaining another agent loop or main frontend. The desktop shell itself — the window, tray, terminal, updates and work profiles — integrates as DSH plugins in the same runtime. From the core agent to the desktop shell, the product follows the same "everything is a plugin" rule: plugins matching the pinned Core API can be used, while desktop capabilities are composed, replaced and evolved in the same way.
 
 We want the plugin ecosystem to work like a phone app store: every plugin is built against the same set of rules, so plugins can be installed together and work together without interfering with each other.
 
 ### For developers
 
-Unlike many other projects, this project itself is a DSH [plugin](docs/plugin-development.en.md): the desktop shell uses the same plugin composition mechanism as third-party plugins. Desktop plugin capabilities are now available. We provide Desktop services so plugin developers can integrate their plugins with desktop capabilities: for example, viewing and switching work profiles, or installing, updating, and removing plugins in the active profile. See the [Desktop plugin API](dsh-plugin-desktop/docs/plugin-services.md) for complete usage details. See [Why DSH Desktop](docs/why-desktop.en.md) and [Plugin development](docs/plugin-development.en.md) for the reasoning and the third-party boundary.
+Unlike many other projects, this project itself is a DSH [plugin](docs/plugin-development.en.md): the desktop shell uses the same plugin composition mechanism as third-party plugins. Desktop plugin capabilities are now available. We provide Desktop services so plugin developers can integrate their plugins with desktop capabilities: for example, viewing and switching work profiles, or installing, updating, and removing plugins in the active profile. See [Why DSH Desktop](docs/why-desktop.en.md) and [Plugin development](docs/plugin-development.en.md) for the reasoning and the third-party boundary.
 
 ## Relationship to DeepSeek Harness
 
@@ -143,7 +143,7 @@ The upstream project provides the core agent capabilities, plugin system, and We
 - Desktop application packaging
 - Starting, stopping, and recovering the local service
 - Desktop window and system tray integration
-- macOS and Windows installer builds and releases
+- Windows x64 installer builds and releases
 - An interface designed for desktop use
 
 If you prefer to run DeepSeek Harness from the command line or contribute to its core functionality, refer to the upstream repository first.
@@ -162,7 +162,7 @@ Also, and you.
 
 ## Development
 
-Desktop source lives in `dsh-plugin-desktop/`. The outer repository uses Yarn, while the pinned `deepseek-harness/` submodule keeps its own pnpm workspace. From the repository root:
+Desktop source lives in `dsh-desktop-next/`, which targets Windows x64 only: its source, build, packaging and local runtime dependencies accept no other platform. The outer repository uses Yarn, while the pinned `deepseek-harness/` submodule keeps its own pnpm workspace. From the repository root:
 
 ```sh
 git submodule update --init --recursive
@@ -170,14 +170,13 @@ corepack yarn install --immutable
 corepack yarn dev
 ```
 
-Use `corepack yarn check` for the headless gate. The [architecture](docs/architecture.en.md) and package [`README`](dsh-plugin-desktop/README.md) describe the full build, test, and release boundaries. See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) for how to contribute.
+Use `corepack yarn check` for the headless gate. The [upstream synchronization guide](<docs/upstream-sync.en.md>) and package [`README`](dsh-desktop-next/README.md) describe the full build, test, and release boundaries. See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) for how to contribute.
 
-### macOS microphone permission
+### Windows permissions
 
-Stable, Beta, and Next sign the main application and the Electron Helpers directly with
-`deepseek-harness/apps/desktop/scripts/macos-entitlements.plist` from the pinned upstream checkout. After a submodule update, packaging picks up the matching entitlements automatically, so no local copy is maintained; initialize the submodule before packaging. Each edition's macOS configuration keeps its own product-specific microphone usage description.
+The application builds Windows x64 only, and Windows privacy settings own every grant: the in-app permission dialog reports the current status and, on a user click, opens the matching system settings page (microphone is `ms-settings:privacy-microphone`) instead of prompting in-process. Voice input triggers system consent through the upstream recording flow, and the voice plugin has no separate permission button.
 
-Voice input triggers system consent through the upstream recording flow. The voice plugin no longer has a separate permission button, and Stable/Beta no longer install a microphone permission request bridge or interceptor.
+Desktop notifications also need system consent; without it no in-app notification is shown.
 
 ## Community
 

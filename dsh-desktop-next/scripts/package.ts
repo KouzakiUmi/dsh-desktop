@@ -1,33 +1,25 @@
-/** Next entry points reuse Stable/Beta's native packaging and credential boundaries. */
+/** Next entry points reuse the adopted native Windows packaging and credential boundaries. */
 import { spawnSync } from 'node:child_process'
-import { readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { packageDirectory } from '../adopted/scripts/package-dir.mjs'
-import { releaseMac } from '../adopted/scripts/release-mac.ts'
-import { adaptMacReleaseEnvironment, assertMacReleaseReady, withoutMacReleaseSecrets } from '../adopted/scripts/release-preflight.ts'
-import { packageMacSmoke } from '../adopted/scripts/package-mac.ts'
 import { createWindowsPackageOptions, packageWindowsInstaller } from '../adopted/scripts/package-win.ts'
-import { prepareNextMacRuntime } from './mac-runtime.ts'
 import { runNextPackagingCommand } from './packaging-command.ts'
-import { expectedNextVersion, nextRuntimeBuildPaths, nextRuntimeTargets, prepareNextRuntime, primaryRuntimeDirectory, smokeNextRuntime, verifyNextRuntimeTree } from './prepare-runtime.ts'
-import { signMacRuntime, withMacSigningIdentity } from './sign-runtime.ts'
+import { expectedNextVersion, nextRuntimeBuildPaths, prepareNextRuntime, smokeNextRuntime, verifyNextRuntimeTree } from './prepare-runtime.ts'
 
 const desktopRoot = fileURLToPath(new URL('..', import.meta.url))
 const workspaceRoot = resolve(desktopRoot, '..')
 const require = createRequire(import.meta.url)
-const APP_ID = (JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')) as { build: { appId: string } }).build.appId
 
 /**
  * Optional test-only build version for update drills.
  *
- * electron-builder merges `extraMetadata` before signing, so one value reaches
+ * electron-builder merges `extraMetadata` before packaging, so one value reaches
  * the packaged `package.json` (which the runtime and the updater's bundle check
- * read), `Info.plist` `CFBundleShortVersionString`/`CFBundleVersion`, and the
- * `${version}` artifact name. That produces an installable, correctly signed
- * release whose version differs from the source tree, without editing any
- * version declaration. Only the two shapes the Next channel accepts are allowed.
+ * read) and the `${version}` artifact name. That produces an installable release
+ * whose version differs from the source tree, without editing any version
+ * declaration. Only the two shapes the Next channel accepts are allowed.
  * The bundled interpreter payloads and the prepared archive payload record the
  * same version.
  */
@@ -36,82 +28,71 @@ if (TEST_BUILD_VERSION !== undefined && !/^[0-9]+\.[0-9]+\.[0-9]+-next(?:\.[0-9]
   throw new Error(`DSH_NEXT_BUILD_VERSION must be x.y.z-next or x.y.z-next.N; received ${TEST_BUILD_VERSION}`)
 }
 const buildVersion = expectedNextVersion(desktopRoot)
+
+/**
+ * Fail loud on a host that cannot produce the Windows x64 product. Next ships a
+ * single platform and CPU, so any other host would prepare a payload nothing
+ * consumes instead of an artifact.
+ */
+function assertWindowsPackagingHost(): void {
+  if (process.platform !== 'win32') throw new Error(`DSH NEXT packages Windows x64 only; this host is ${process.platform}`)
+  if (process.arch !== 'x64') throw new Error(`DSH NEXT packages Windows x64 only; this Node runs ${process.arch}`)
+}
+
 const run = (command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): void => {
   // Windows resolves the CLI path with backslashes.
   const isBuilder = args.includes('electron-builder') || args.some(arg => arg.replaceAll('\\', '/').endsWith('electron-builder/cli.js'))
-  // Beta skips electron-builder's dependency rebuild with npmRebuild=false. electron-builder honours
-  // that flag before it calls beforeBuild, and only a beforeBuild answer makes it leave node_modules
-  // to the prepared payload, so Next drops the flag: its beforeBuild hook declines the rebuild too.
+  // The adopted Windows flow skips electron-builder's dependency rebuild with npmRebuild=false.
+  // electron-builder honours that flag before it calls beforeBuild, and only a beforeBuild answer
+  // makes it leave node_modules to the prepared payload, so Next drops the flag: its beforeBuild
+  // hook declines the rebuild too.
   const withoutRebuildFlag = isBuilder ? args.filter(arg => arg !== '--config.npmRebuild=false') : args
   const forwarded = TEST_BUILD_VERSION !== undefined && isBuilder
     ? [...withoutRebuildFlag, `--config.extraMetadata.version=${TEST_BUILD_VERSION}`, `--config.buildVersion=${TEST_BUILD_VERSION}`]
     : withoutRebuildFlag
   if (TEST_BUILD_VERSION !== undefined && isBuilder) console.log(`Packaging with test build version ${TEST_BUILD_VERSION}; source manifests are unchanged.`)
-  runNextPackagingCommand(command, forwarded, cwd, env, workspaceRoot)
-}
-const listCodeSigningIdentities = (env: NodeJS.ProcessEnv): string => {
-  const result = spawnSync('security', ['find-identity', '-v', '-p', 'codesigning'], { env, encoding: 'utf8' })
-  if (result.error || result.status !== 0) throw result.error ?? new Error('Signing identity discovery failed')
-  return result.stdout
+  runNextPackagingCommand(command, forwarded, cwd, env)
 }
 
 /**
- * Prepare every interpreter payload the platform ships, sign them when a release identity is given,
- * then check and execute the final bytes. electron-builder copies the tree as extra resources.
+ * Prepare the Windows x64 interpreter payload, then check and execute the final bytes.
+ * electron-builder copies the tree as extra resources.
  */
-async function prepareInterpreters(sign?: (runtimeRoot: string) => Promise<void>): Promise<void> {
+async function prepareInterpreters(): Promise<void> {
   const root = await prepareNextRuntime({ desktopRoot, platform: process.platform, version: buildVersion })
-  if (sign !== undefined) await sign(root)
   verifyNextRuntimeTree(root, process.platform, buildVersion)
   smokeNextRuntime(root, process.platform)
 }
+
 /**
  * Materialize and seal the payload electron-builder archives. A separate process keeps the
  * manifest transformer it borrows from electron-builder out of this entry point.
- * @param platform - Platform being packaged.
  */
-const preparePayload = (platform: NodeJS.Platform): void => {
-  const result = spawnSync(process.execPath, [join(desktopRoot, 'scripts', 'prepare-payload.ts'), '--platform', platform,
+const preparePayload = (): void => {
+  const result = spawnSync(process.execPath, [join(desktopRoot, 'scripts', 'prepare-payload.ts'),
     ...(TEST_BUILD_VERSION === undefined ? [] : ['--version', TEST_BUILD_VERSION])], { cwd: desktopRoot, env: process.env, stdio: 'inherit' })
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`Next payload preparation exited with ${String(result.status)}`)
 }
+
 /**
- * The shared flows call this right before electron-builder: the interpreter payloads were prepared
- * before they started and must still verify, and the archive payload is prepared now.
- * @param platform - Platform being packaged; the shared flows package the host platform.
+ * The Windows packaging flow calls this right before electron-builder: the interpreter payloads
+ * were prepared before it started and must still verify, and the archive payload is prepared now.
  */
-const prepareRuntime = (platform: NodeJS.Platform = process.platform): void => {
-  if (platform === 'darwin') prepareNextMacRuntime(desktopRoot)
-  verifyNextRuntimeTree(nextRuntimeBuildPaths(desktopRoot).runtime, platform, buildVersion)
-  preparePayload(platform)
+const prepareRuntime = (): void => {
+  verifyNextRuntimeTree(nextRuntimeBuildPaths(desktopRoot).runtime, process.platform, buildVersion)
+  preparePayload()
 }
+
 const mode = process.argv[2]
-const outputDir = join(desktopRoot, 'dist', mode === 'mac' ? 'mac-release' : 'mac-smoke')
-const shared = { env: process.env, platform: process.platform, desktopRoot, outputDir,
-  resetOutput: () => rmSync(outputDir, { force: true, recursive: true }), run, log: console.log, prepareRuntime }
 if (mode === 'dir') {
+  assertWindowsPackagingHost()
   await prepareInterpreters()
   prepareRuntime()
   packageDirectory({ cwd: desktopRoot, electronBuilderCli: require.resolve('electron-builder/cli.js'), electronDistPath: join(dirname(require.resolve('electron/package.json')), 'dist') })
-} else if (mode === 'mac') {
-  // The preflight the shared release flow repeats; the payload signatures must carry the identity it selects.
-  const releaseEnvironment = adaptMacReleaseEnvironment(process.env)
-  const ready = assertMacReleaseReady({ env: releaseEnvironment, platform: process.platform,
-    listCodeSigningIdentities: () => listCodeSigningIdentities(withoutMacReleaseSecrets(releaseEnvironment)) })
-  await prepareInterpreters(root => withMacSigningIdentity(releaseEnvironment, ready.identity, async (signer) => {
-    for (const { arch } of nextRuntimeTargets('darwin')) {
-      const signed = await signMacRuntime(primaryRuntimeDirectory(root, arch), APP_ID, signer, arch)
-      console.log(`Signed ${String(signed)} native files of the ${arch} primary runtime as ${ready.identity}`)
-    }
-  }))
-  releaseMac({ ...shared, listCodeSigningIdentities })
-} else if (mode === 'mac-smoke') {
-  await prepareInterpreters()
-  packageMacSmoke({ ...shared, workspaceRoot, arch: process.arch, nodeVersion: process.versions.node,
-    builderCli: require.resolve('electron-builder/cli.js'), verifier: join(desktopRoot, 'scripts/verify-mac-smoke.ts'), nodeExecutable: process.execPath })
 } else if (mode === 'win') {
+  assertWindowsPackagingHost()
   await prepareInterpreters()
   packageWindowsInstaller({ ...createWindowsPackageOptions(), desktopRoot, workspaceRoot, run, prepareRuntime,
     verifier: join(desktopRoot, 'scripts/verify-win-installer.ts') })
-} else throw new Error('Expected dir, mac, mac-smoke or win')
+} else throw new Error('Expected dir or win')

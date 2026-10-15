@@ -6,20 +6,19 @@ import { APP_URL } from './ipc.ts'
 export function createNativePermissions(): NativePermissions {
   return new NativePermissions({
     platform: process.platform,
-    // AXIsProcessTrusted and Electron's screen-capture preflight answer only yes or no, so an ungranted screen or
-    // Accessibility grant reads as denied whether or not the person ever refused it.
-    status: permission => permission === 'accessibility'
-      ? process.platform === 'darwin' ? systemPreferences.isTrustedAccessibilityClient(false) ? 'granted' : 'denied' : 'unknown'
-      : systemPreferences.getMediaAccessStatus(permission),
+    // Electron's screen-capture preflight answers only yes or no, so an ungranted screen grant
+    // reads as denied whether or not the person ever refused it.
+    status: permission => permission === 'accessibility' ? 'unknown' : systemPreferences.getMediaAccessStatus(permission),
     microphone: () => systemPreferences.askForMediaAccess('microphone'),
-    // Enumeration triggers macOS consent when needed; zero-sized thumbnails avoid capturing images.
+    // Enumeration as a preflight; zero-sized thumbnails avoid capturing images.
     screen: async () => { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }) },
-    accessibility: async () => { systemPreferences.isTrustedAccessibilityClient(true) },
+    // Windows grants control through its own privacy settings, so no in-process prompt exists.
+    accessibility: async () => {},
     openSettings: url => shell.openExternal(url),
   })
 }
 
-/** Use the existing native menu for systems without the macOS screen-sharing picker. */
+/** Use the existing native menu to choose a screen or window, as the official Desktop does. */
 async function chooseScreen(window: BrowserWindow, language: string): Promise<DesktopCapturerSource | undefined> {
   const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
   if (window.isDestroyed() || sources.length === 0) return undefined

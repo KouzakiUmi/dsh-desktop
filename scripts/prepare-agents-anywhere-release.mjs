@@ -15,7 +15,6 @@ const provenancePath = join(vendorRoot, 'provenance.json')
 const currentProvenance = existsSync(provenancePath) ? JSON.parse(readFileSync(provenancePath, 'utf8')) : {}
 let desktopVersion
 let artifactName
-const peerPackages = ['@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session']
 // The official AA source does not publish its local yarn.lock. Its devDependencies
 // target one DSH release, but caret dependencies inside that release can float to
 // a later rc and make ambient declarations from two releases conflict at build.
@@ -237,7 +236,7 @@ function prepare() {
         `version set to ${desktopVersion}`,
         'release staging removes prepack/postpack hooks; build, typecheck and check:build run explicitly',
         'release staging pins the AA build-time DSH type graph to the source devDependencies',
-        ...peerPackages.map(name => `${name} peer accepts ${peerRanges[name]}`),
+        ...Object.entries(peerRanges).map(([name, range]) => `${name} peer accepts ${range}`),
       ],
       sourceChanges: [],
     }

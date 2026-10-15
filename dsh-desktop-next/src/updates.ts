@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { checkForDesktopUpdate, type UpdateCheckResult, type UpdateRequest } from '../adopted/src/update-checker.ts'
 import { desktopUpdateFilename, downloadDesktopUpdate, type UpdateArtifactRequest } from '../adopted/src/update-download.ts'
 import { getOrCreateDesktopInstallationId } from '../adopted/src/desktop-installation-id.ts'
-import { privateDirectory } from './private-files.ts'
+import { atomicJson, privateDirectory, readPrivateFile } from './private-files.ts'
 import type { NextUpdateState } from './update-state.ts'
 
 export interface NextUpdateOptions {
@@ -17,6 +17,8 @@ export interface NextUpdateOptions {
   /** Installer transport; it owns redirect following and its per-hop HTTPS check. */
   artifactRequest: UpdateArtifactRequest
   changed(): void
+  /** Report an update discovered by a background poll; the shell decides whether to surface it. */
+  available?(version: string): void
   log(error: unknown): void
   prepare(path: string, version: string, directory: string, signal: AbortSignal): Promise<void>
   install(): Promise<void>
@@ -29,16 +31,30 @@ export class NextUpdates {
   private controller?: AbortController
   private timer?: ReturnType<typeof setTimeout>
   private directory?: string
+  private notifiedVersion?: string
   private cacheReady?: Promise<void>
   private disposed = false
   constructor(private readonly options: NextUpdateOptions) {
-    this.state = { phase: 'idle', installable: options.packaged && ['darwin', 'win32'].includes(options.platform) }
+    this.state = { phase: 'idle', installable: options.packaged && options.platform === 'win32' }
   }
   snapshot(): NextUpdateState { return { ...this.state } }
   private initializeCache(): Promise<void> {
-    return this.cacheReady ??= (async () => {
+    if (this.cacheReady !== undefined) return this.cacheReady
+    // A rejected attempt must not become the permanent answer: a transient filesystem failure
+    // (a lock held by an antivirus scanner, a momentarily unavailable userData directory) would
+    // otherwise fail every later check, download and install for the rest of the session. The
+    // caller still observes the failure through the returned promise, and the next attempt runs
+    // the preparation again.
+    const ready = (async () => {
       const cache = join(this.options.userData, 'next-updates')
       privateDirectory(cache)
+      // The notified version survives a restart, so a background poll does not re-announce an
+      // update the user has already been told about.
+      try {
+        const text = readPrivateFile(join(cache, 'state.json'), 4096)
+        const parsed = text ? JSON.parse(text) as { notifiedVersion?: unknown } : undefined
+        if (typeof parsed?.notifiedVersion === 'string') this.notifiedVersion = parsed.notifiedVersion
+      } catch (error) { this.options.log(error) }
       // One primary process owns this userData tree. Clean our previous process's
       // completed installers/partial files; never delete arbitrary files in userData.
       for (const entry of await readdir(cache, { withFileTypes: true })) {
@@ -47,6 +63,14 @@ export class NextUpdates {
         }
       }
     })()
+    this.cacheReady = ready
+    void ready.catch(() => { if (this.cacheReady === ready) this.cacheReady = undefined })
+    return ready
+  }
+  private recordNotifiedVersion(version: string): void {
+    this.notifiedVersion = version
+    try { atomicJson(join(this.options.userData, 'next-updates', 'state.json'), { notifiedVersion: version }) }
+    catch (error) { this.options.log(error) }
   }
   private set(patch: Partial<NextUpdateState>): void {
     if (this.disposed) return
@@ -58,7 +82,7 @@ export class NextUpdates {
     void this.initializeCache().catch(this.options.log)
     const poll = (): void => {
       if (this.disposed) return
-      if (['idle', 'current', 'error'].includes(this.state.phase)) void this.check()
+      if (['idle', 'current', 'error'].includes(this.state.phase)) void this.check(true)
       this.timer = setTimeout(poll, 6 * 60 * 60_000); this.timer.unref()
     }
     this.timer = setTimeout(poll, 30_000); this.timer.unref()
@@ -82,7 +106,7 @@ export class NextUpdates {
     return checkForDesktopUpdate({ currentVersion: this.options.version, channel: 'next', installationId,
       request: this.options.request, signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) })
   }
-  check(): Promise<void> {
+  check(background = false): Promise<void> {
     if (this.state.phase === 'ready' || this.state.phase === 'installing') return Promise.resolve()
     return this.run(async signal => {
       this.set({ phase: 'checking' })
@@ -90,6 +114,16 @@ export class NextUpdates {
         this.result = await this.query(signal) ?? undefined
         if (!this.result) { this.set({ phase: 'error', error: 'service', version: undefined }); return }
         this.set({ phase: this.result.status === 'update-available' ? 'available' : 'current', version: this.result.latestVersion })
+        if (this.result.status === 'update-available') {
+          // One notification per newly discovered version: a background poll announces it once,
+          // a user-initiated check only records it so the later poll does not repeat it.
+          if (background && this.state.installable && this.result.latestVersion !== this.notifiedVersion) {
+            this.recordNotifiedVersion(this.result.latestVersion)
+            if (!this.disposed) this.options.available?.(this.result.latestVersion)
+          } else if (!background && this.result.latestVersion !== this.notifiedVersion) {
+            this.recordNotifiedVersion(this.result.latestVersion)
+          }
+        }
       } catch (error) { this.options.log(error); this.set({ phase: 'error', error: 'service' }) }
     })
   }
@@ -107,7 +141,8 @@ export class NextUpdates {
         if (!result) { this.set({ phase: 'error', error: 'service' }); return }
         this.result = result
         if (result.status !== 'update-available') { this.set({ phase: 'current', version: result.latestVersion }); return }
-        const platform = this.options.platform as 'darwin' | 'win32'
+        if (result.latestVersion !== this.notifiedVersion) this.recordNotifiedVersion(result.latestVersion)
+        const platform = 'win32'
         const cache = join(this.options.userData, 'next-updates'); privateDirectory(cache)
         if (this.directory) await rm(this.directory, { recursive: true, force: true })
         const directory = this.directory = await mkdtemp(join(cache, 'download-'))

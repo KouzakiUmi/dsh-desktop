@@ -16,12 +16,12 @@ export class NativePermissions {
 
   query(value: unknown): DesktopPermissionSnapshot {
     const permission = desktopPermission(value)
-    const status = this.native.platform === 'darwin' || this.native.platform === 'win32' ? this.native.status(permission) : 'unknown'
+    const status = this.native.status(permission)
     return { permission, status,
-      // macOS reports the microphone as undecided until its first prompt. It keeps no undecided state for screen
-      // recording, where only a first capture attempt prompts, or for Accessibility, where the prompt opens the
-      // privacy pane, so both stay requestable until granted; a managed restriction is not.
-      canRequest: this.native.platform === 'darwin' && (status === 'not-determined' || (permission !== 'microphone' && status === 'denied')),
+      // Windows grants microphone, screen capture and Accessibility control through its own
+      // privacy settings. The application cannot prompt for them in-process, so the dialog only
+      // reports the current status and links to the settings page.
+      canRequest: false,
       canOpenSettings: this.settingsUrl(permission) !== undefined,
     }
   }
@@ -49,11 +49,6 @@ export class NativePermissions {
   }
 
   private settingsUrl(permission: DesktopPermission): string | undefined {
-    if (this.native.platform === 'darwin') {
-      const pane = { microphone: 'Privacy_Microphone', screen: 'Privacy_ScreenCapture', accessibility: 'Privacy_Accessibility' }[permission]
-      return `x-apple.systempreferences:com.apple.preference.security?${pane}`
-    }
-    if (this.native.platform === 'win32' && permission === 'microphone') return 'ms-settings:privacy-microphone'
-    return undefined
+    return permission === 'microphone' ? 'ms-settings:privacy-microphone' : undefined
   }
 }

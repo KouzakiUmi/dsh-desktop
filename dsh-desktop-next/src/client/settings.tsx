@@ -26,7 +26,7 @@ export function NextDesktopSettings({ adapter, language, onOpenPlugins }: { adap
   const state = useDesktopState(adapter)
   const t = desktopTranslate(language)
   return <div data-next-desktop-settings=""><DesktopSettingsSection
-    t={t} api={adapter.api} version={state?.version ?? ''} platform={state?.platform === 'darwin' || state?.platform === 'win32' ? state.platform : 'linux'}
+    t={t} api={adapter.api} version={state?.version ?? ''} platform="win32"
     initialMode="compatibility"
     setMode={async () => { throw new Error('Window modes are not supported in Next') }}
     desktopSettings={adapter.desktopSettings} notificationSettings={adapter.notificationSettings}
@@ -45,7 +45,7 @@ export function NextDesktopSettings({ adapter, language, onOpenPlugins }: { adap
 
 export function NextDesktopActions({ adapter, language }: { adapter: NextSettingsAdapter; language: string }) {
   const state = useDesktopState(adapter)
-  return <DesktopNativeActions api={adapter.api} t={desktopTranslate(language)} placement="settings" terminalAvailable={state?.platform === 'darwin' || state?.platform === 'win32'} />
+  return <DesktopNativeActions api={adapter.api} t={desktopTranslate(language)} placement="settings" terminalAvailable />
 }
 
 function NextBrowserActions({ adapter, state, language }: { adapter: NextSettingsAdapter; state: DesktopState; language: string }) {

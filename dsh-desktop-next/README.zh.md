@@ -25,25 +25,24 @@ corepack yarn workspace dsh-desktop-next verify:host:electron
 
 此检查不打开 Electron 窗口。主窗口呈现、原生对话框和真实手机连接仍需手动验收。
 
-CI 还会在 Linux 中运行 `xvfb-run --auto-servernum corepack yarn workspace dsh-desktop-next verify:protocol --no-sandbox`。此独立测试使用真实 Electron 渲染进程、自定义协议和临时 Host，在关闭普通浏览器访问时验证市场源操作，并拒绝其他页面来源的请求。它不属于跨平台的 `check:next` 命令；关闭沙箱的参数仅用于这个隔离的 CI 进程。
+Windows x64 CI 在构建后分别运行 `verify:protocol`、`verify:plugin-frames` 和 `verify:sidebar-browser`，使用真实但隐藏的 Electron 窗口。协议与子帧检查使用本地测试数据，验证市场源操作、已认证的自定义协议请求、受管理子帧标记、上传、下载和外部页面请求拒绝。这些检查独立于不打开图形应用的 `check:next` 命令；Node 启动器拥有仓库内的私有测试数据目录，只在子进程环境中清除 `ELECTRON_RUN_AS_NODE`，并在 Electron 退出后才清理该目录。CI 不添加 `--no-sandbox`。
 
-同一 Linux/Xvfb 环境中的 `verify:sidebar-browser --no-sandbox` 使用同时返回 `frame-ancestors 'none'` 和 `X-Frame-Options: DENY` 的本地测试页，验证 iframe 被拦截、凭租约挂载的真实访客页成功加载、访客自身的安全设置、应用 Cookie 与 preload 隔离、原生历史、伪造租约被拒、工作区分区隔离，以及释放后的清理。跨平台的 `verify:window-controls` 则通过模拟原生接口检查官方工具栏、分栏缩放、弹窗遮挡、标签切换与关闭，并验证普通 Web 客户端仍使用 iframe。
+`verify:sidebar-browser` 使用同时返回 `frame-ancestors 'none'` 和 `X-Frame-Options: DENY` 的本地测试页，验证 iframe 被拦截、凭租约挂载的真实访客页成功加载、访客自身的安全设置、应用 Cookie 与 preload 隔离、原生历史、伪造租约被拒、工作区分区隔离，以及释放后的清理。
 
-macOS 侧栏和标题栏回归检查会用临时数据目录，在无界面的 Chromium 中运行官方前端的 Desktop 启动分支。测试使用与 Next 相同的入口文档，通过模拟的 preload 接口提供真实 Host 注入，并断言已进入 Desktop 传输模式；随后验证选择工作区之前与创建真实空白会话之后复用同一套官方顶栏，首页及插件列表／详情页可重新展开侧栏，透明拖动区域保持固定而插件标题按原样滚动，控件滚入拖动区域后仍可点击。测试还会打开官方设置中的“桌面设置”分区，验证设置和 Profile 操作，并在没有 Host 依赖时渲染独立恢复窗口的实际构建产物。这些浏览器检查使用模拟的原生 IPC。构建后，首次安装测试浏览器并运行：
+引导流程回归检查会用临时数据目录，在无界面的 Chromium 中运行官方前端的 Desktop 启动分支。测试使用与 Next 相同的入口文档，通过模拟的 preload 接口提供真实 Host 注入，并断言已进入 Desktop 传输模式；随后驱动官方引导向导，打开官方设置中的“桌面设置”分区，验证设置和 Profile 操作，并在没有 Host 依赖时渲染独立恢复窗口的实际构建产物。这些浏览器检查使用模拟的原生 IPC。构建后，首次安装测试浏览器并运行：
 
 ```sh
 corepack yarn workspace dsh-desktop-next exec playwright install chromium
-corepack yarn workspace dsh-desktop-next verify:window-controls
 corepack yarn workspace dsh-desktop-next verify:onboarding
 ```
 
-设置 `DSH_NEXT_TEST_BROWSER_CHANNEL=chrome` 可使用已安装的 Google Chrome。截图保存在 `dsh-desktop-next/.desktop-next/verification/`。macOS 原生窗口拖动仍需手工验证。版本限定的包补丁让无会话首页复用官方会话顶栏框架及侧栏控件。在插件列表和详情页收起侧栏后，复用官方展开按钮，固定在 macOS 红黄绿按钮右侧，位置不受内容宽度和页面滚动影响，不额外显示会话页的“新会话”按钮。插件页保留原有标题、操作栏、布局与滚动行为。在不滚动的主栏顶部设置 52px 高的透明拖动区域，覆盖顶部及两侧留白，不占布局空间、不遮挡内容。按钮、链接、输入框等交互控件排除原生拖动，滚入该区域后仍可点击。
+设置 `DSH_NEXT_TEST_BROWSER_CHANNEL=chrome` 可使用已安装的 Google Chrome。截图保存在 `dsh-desktop-next/.desktop-next/verification/`。窗口呈现、原生对话框和真实手机连接仍需手工验收。版本限定的包补丁让无会话首页复用官方会话顶栏框架及侧栏控件。插件页保留原有标题、操作栏、布局与滚动行为，也不额外显示会话页的“新会话”按钮。
 
 ## 应用图标资源
 
-`build/app-icon.icon` 是可编辑的 Icon Composer 工程，保留最终 NEXT 徽标布局和 System Dark 背景。在安装了 Xcode 27 和 Icon Composer 的 Mac 上，从仓库根目录运行 `corepack yarn icons:export --channel next`，可更新 `build/app-icon.png`、Windows 使用的 `build/app-icon.ico`、原生编译生成的 `build/app-icon.icns` 和开发运行的 Dock 图标 `build/app-icon-mac.png`。这些文件需与 `build/app-icon.resources.json` 一起提交；`corepack yarn icons:check` 可在任何系统中无界面验证。
+`build/app-icon.icon` 是可编辑的 Icon Composer 工程，保留最终 NEXT 徽标布局和 System Dark 背景，并且仍是图形资产的源头。在安装了 Xcode 和 Icon Composer 的 Mac 上从它重新渲染 `build/app-icon.png`；在任何系统中运行 `corepack yarn icons:export`，都会由这张已提交的 PNG 重新生成多尺寸的 Windows `build/app-icon.ico`。PNG、ICO 与 `build/app-icon.resources.json` 需一起提交；`corepack yarn icons:check` 无需 Xcode 即可校验分层源摘要与两份导出，并由 layout 门禁执行。
 
-Next 的 macOS 打包与 Stable、Beta 一样，直接使用分层 `.icon` 源工程编译 `Assets.car`。PNG Dock 图标仅用于未打包的开发运行；Windows 和 Linux 窗口分别使用 ICO 与 PNG 导出资源。
+Windows 打包使用 `build/app-icon.ico`（应用窗口与 NSIS 安装器），未打包的开发运行使用 `build/app-icon.png`。分层 `.icon` 工程保留下来以便日后继续编辑和重新渲染；没有其他平台目标使用它。
 
 ## 使用
 
@@ -72,7 +71,7 @@ Next 的 macOS 打包与 Stable、Beta 一样，直接使用分层 `.icon` 源�
 
 ### 原生权限与 Computer Use
 
-Computer Use 旁的齿轮，以及**设置 → 桌面设置 → 授权设置**，都使用应用内授权弹窗，复用官方 Modal、Button 和 StateDot 组件。弹窗显示屏幕录制、macOS 辅助功能和麦克风的权限状态。打开弹窗时只查询权限；用户点击按钮后才请求系统授权或打开对应的系统隐私设置。macOS 系统设置中的权限变更可能需要重启应用。macOS 对屏幕录制和辅助功能没有“尚未询问”状态：两者在授权出现前都显示为未授权并保持可请求，屏幕录制的请求就是首次截屏尝试触发的系统弹窗；弹窗会说明开启屏幕录制后 macOS 会要求重新打开应用，以及系统设置中仍显示开启的辅助功能条目属于更早一次构建的签名，需要移除后重新添加。Windows 麦克风限制提供隐私设置入口；平台不支持的状态查询返回 `unknown`，不假定已经授权。
+Computer Use 旁的齿轮，以及**设置 → 桌面设置 → 授权设置**，使用应用内弹窗，复用官方 Modal、Button 和 StateDot 组件。打开时只查询 Windows 可提供的权限状态；用户点击按钮后才请求受支持的系统授权或打开对应隐私设置。Windows 麦克风限制提供隐私设置入口；平台不支持的状态查询返回 `unknown`，不假定已经授权。
 
 Next 向原生客户端插件和 Host 插件提供 Cordis 服务 `desktopPermissions`。从 `dsh-desktop-next/permissions` 导入类型，并注入 `desktopPermissions`；普通浏览器客户端没有此服务。方法为 `query(permission)`、`request(permission)` 和 `openSettings(permission)`，权限名称包括 `microphone`、`screen`、`accessibility`。结果包含 `status`、`canRequest` 和 `canOpenSettings`。
 
@@ -94,7 +93,7 @@ export async function record(ctx: Context) {
 
 客户端请求必须由当前前台窗口中的用户操作触发。Host 请求不能模拟用户点击：它会在主窗口显示授权弹窗，并返回当前系统状态，插件应在用户授权后重新查询。在前端挂载前发出的原生设置请求会保留，待界面就绪后交付。Host IPC 关联请求与响应，设置超时，并在卸载时拒绝尚未完成的请求。每次查询都会重新读取系统状态。
 
-屏幕共享应在用户点击“共享”时直接调用 `navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })`。macOS 15 及以上使用 Electron 的系统选择器，其余系统使用原生菜单选择来源，不自动选择屏幕。系统选择器的单次共享授权可能不同于全局屏幕录制权限。权限服务本身不录制媒体，屏幕共享也不授予电脑输入控制能力。打包 Next 时保留产品自己的 `NSMicrophoneUsageDescription`，主应用和 Helper 签名直接使用固定上游 checkout 中的 `apps/desktop/scripts/macos-entitlements.plist`。语音输入通过 `getUserMedia` 触发 Chromium/macOS 的录音授权，语音插件旁不再提供额外权限按钮。
+屏幕共享应在用户点击“共享”时直接调用 `navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })`。Windows 使用 Electron 的原生来源选择菜单，不自动选择屏幕。权限服务本身不录制媒体，屏幕共享也不授予电脑输入控制能力。麦克风与屏幕录制的授权由 Windows 隐私设置管理，权限弹窗链接到对应设置页（麦克风为 `ms-settings:privacy-microphone`）。语音输入通过 `getUserMedia` 触发 Chromium 的录音授权，语音插件旁不再提供额外权限按钮。
 
 内置官方 `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native@0.1.6-alpha.2`，**默认停用**。在**插件**页顶部的 Computer Use 分区中启用，并查看实际加载状态。入口复用官方插件槽位、开关和插件管理服务；Profile 条目 ID 为 `computer-use-cua-driver-native`。共享的 `computer-use` 注册服务已提供。操作和截图沿用现有对话工具卡片及图片附件；理解截图需要模型路由声明支持图片输入。开关左侧的齿轮打开授权弹窗。
 
@@ -105,8 +104,6 @@ export async function record(ctx: Context) {
 ```sh
 corepack yarn workspace dsh-desktop-next verify:host --computer-use
 ```
-
-可选的 `verify:window-controls --computer-use` 检查还会在无窗口 Chromium 中通过官方前端启用和停用真实驱动，不调用电脑操作工具。原生系统授权和实际电脑操作仍需手动验收。
 
 ### 恢复
 
@@ -140,9 +137,9 @@ corepack yarn workspace dsh-desktop-next verify:host --computer-use
               └─ Agents Anywhere bridge
 ```
 
-alpha.1 的无端口管道方案已被 alpha.2 的 WebServer 方案替代。本包使用真正的上游 WebServer，不实现模拟 HTTP 路由层。Host 仅绑定 `127.0.0.1`，默认由系统分配端口，以便与其他版本并行运行；可选的独立 TLS 入口负责局域网访问。主进程保管 Host cookie 和每次启动新生成的原生访问凭据。关闭浏览器访问时，普通 HTTP 和 WebSocket 请求都会被拒绝。Electron 保持在 44.0.0，以兼容上游原生模块。转发到 Host 前，主进程只为自有主窗口中来源为 `dsh-app://app` 的主 frame 请求附加原生访问凭据，并从其他目标及重定向请求中移除该标记；原生 fetch 可以不带 HTTP `Origin` 头。市场请求还需通过 Host 认证，写请求继续校验转换后的本机 HTTP 来源。
+alpha.1 的无端口管道方案已被 alpha.2 的 WebServer 方案替代。本包使用真正的上游 WebServer，不实现模拟 HTTP 路由层。Host 仅绑定 `127.0.0.1`，默认由系统分配端口，以便与其他版本并行运行；可选的独立 TLS 入口负责局域网访问。主进程保管 Host cookie 和每次启动新生成的原生访问凭据。关闭浏览器访问时，普通 HTTP 和 WebSocket 请求都会被拒绝。Electron 固定为 44.7.2，以兼容上游原生模块。转发到 Host 前，主进程只为自有主窗口中来源为 `dsh-app://app` 的主 frame 请求附加原生访问凭据，并从其他目标及重定向请求中移除该标记；原生 fetch 可以不带 HTTP `Origin` 头。市场请求还需通过 Host 认证，写请求继续校验转换后的本机 HTTP 来源。
 
-主界面使用官方前端产物，不复制聊天、设置或插件管理页面。macOS 窗口材质、平台标记、Windows 标题栏菜单与主题同步参考官方实现。主窗口与 shell 窗口中的可编辑区域显示官方的右键编辑菜单：撤销、重做、剪切、复制、粘贴和全选，不带快捷键标注，可用状态由 Chromium 提供，选中的只读文本只提供“复制”，Windows 文案跟随当前应用语言。Windows 原生窗口按钮是例外：按钮背景保持透明，只有图标颜色跟随主题，因此始终透出下方页面实际绘制的底色，包括官方全窗口的引导页与登录页。Next 通过官方的 `settings.section` 槽位添加“桌面”分区，通过 `settings.action` 添加顶部快捷操作。桌面分区直接复用 `dsh-plugin-desktop-beta` 的 `DesktopSettingsSection`、顶部操作和样式；恢复与 Profile 窗口复用原有 React 页面、窗口标题区和基础组件。Next 只适配状态与操作接口，并按能力隐藏未支持的功能，不维护另一套页面副本。共享组件改动同步到 Stable，保留两个版本原有的默认行为。应用 preload 同样安装官方的 `__DSH_HOST_PATHS__` 桥接（基于 Electron 的 `webUtils`）：拖入、选择或粘贴的、带有真实路径的文件和文件夹会以 `@path` 引用进入输入框而不是上传；官方输入框只有在该桥接存在时才接受拖入的文件夹。经过发送者校验的窄 IPC 接口只提供预定义的原生操作，普通浏览器不会获得原生 Desktop 接口。在主窗口添加工作区会直接打开系统文件夹对话框（macOS 为 Finder，Windows 为资源管理器），与上游桌面端一致：Next 启动时把采样到的局域网地址作为可信来源交给 Host，以便开启局域网访问时无需重启 Host，而上游的自适应目录选择器据此挂载应用内目录浏览面板，因此 Next 的客户端 bundle 在桌面窗口里用基于 preload 桥接的无界面驱动遮蔽该占位。通过本机或局域网访问的普通浏览器仍使用 Host 挂载的面板。
+主界面使用官方前端产物，不复制聊天、设置或插件管理页面。平台标记、Windows 标题栏菜单与主题同步参考官方实现。主窗口与 shell 窗口中的可编辑区域显示官方的右键编辑菜单：撤销、重做、剪切、复制、粘贴和全选，不带快捷键标注，可用状态由 Chromium 提供，选中的只读文本只提供“复制”，Windows 文案跟随当前应用语言。Windows 原生窗口按钮是例外：按钮背景保持透明，只有图标颜色跟随主题，因此始终透出下方页面实际绘制的底色，包括官方全窗口的引导页与登录页。Next 通过官方的 `settings.section` 槽位添加“桌面”分区，通过 `settings.action` 添加顶部快捷操作。桌面分区直接复用借用的共享 `DesktopSettingsSection`、顶部操作和样式；恢复与 Profile 窗口复用原有 React 页面、窗口标题区和基础组件。Next 只适配状态与操作接口，并按能力隐藏未支持的功能，不维护另一套页面副本。应用 preload 同样安装官方的 `__DSH_HOST_PATHS__` 桥接（基于 Electron 的 `webUtils`）：拖入、选择或粘贴的、带有真实路径的文件和文件夹会以 `@path` 引用进入输入框而不是上传；官方输入框只有在该桥接存在时才接受拖入的文件夹。经过发送者校验的窄 IPC 接口只提供预定义的原生操作，普通浏览器不会获得原生 Desktop 接口。在主窗口添加工作区会直接打开系统文件夹对话框（Windows 为资源管理器），与上游桌面端一致：Next 启动时把采样到的局域网地址作为可信来源交给 Host，以便开启局域网访问时无需重启 Host，而上游的自适应目录选择器据此挂载应用内目录浏览面板，因此 Next 的客户端 bundle 在桌面窗口里用基于 preload 桥接的无界面驱动遮蔽该占位。通过本机或局域网访问的普通浏览器仍使用 Host 挂载的面板。
 
 Next 是正式的 Profile bundle，因此上游插件管理器重新组合配置时仍保留附加能力。版本限定的补丁从安装清单读取 `dsh.optionalBundles` 和 `dsh.exclusiveBundles`，并为发布版插件管理界面添加 `plugins.overview`、`plugins.bundle.hidden` 槽位。Next 通过槽位添加顶部设置并隐藏重复的 bundle 卡片；未声明互斥组的安装保持原管理器行为。dshmarket 的安装接口调用官方 `runPluginCommand`，使用 Next 当前 Profile、安装路径和内置 pnpm，不依赖系统 PATH 中的 pnpm。开发目录启动时，只为 Next 自身在 `home/profiles/node_modules` 建立一个受管链接；其他依赖由 alpha.2 的 runtime resolver 解析。所有上游运行时依赖来自发布包，不链接或改写 `deepseek-harness/` 源码。
 
@@ -163,19 +160,19 @@ corepack yarn dist:mac:next
 corepack yarn dist:win:next
 ```
 
-打包复用 Beta 的目录构建、macOS universal DMG、签名公证预检和 Windows x64 NSIS 流程；Windows 安装包遵循现有未签名构建策略。与上游桌面端一样，应用归档为 `app.asar`；原生模块、可执行文件、嵌套 bundle、随包 pnpm、AA 桥接的 Connector 工程、Node shim 和图标资源解包在归档旁，因为 Electron 的归档视图只服务自己的 `fs` 和 `dlopen`，子进程、shell 和 `nativeImage` 看不到它。Host、终端里的 `dsh` 命令和恢复助手的插件 CLI 都以 Electron 的 Node 模式从归档运行；Host 通过上游的模块钩子把 LibreOffice 引擎解析到解包副本，并通过 Next 自己的钩子把 agent preset 包的清单解析到解包副本，因为创造模式 preset 把该包的 `skills/` 作为 `skill-filesystem` 的自定义根目录挂载，Host 的文件系统服务用 `bigint` stat 列目录，而 Electron 的归档视图对归档内条目给不出 bigint 结果，并通过另一个 Next 钩子把 computer use 驱动的平台包解析到解包副本，因为驱动会把该包里的库路径交给系统加载器，而系统加载器不读取归档，并通过第三个 Next 钩子把徽章技能包解析到解包副本，因为该技能要模型从它宣告的目录取 `dsh-badge.png`，而 shell 和 Host 的文件系统服务都读不到归档内的文件，解包副本发出的模块请求按归档副本解析，所以它的依赖仍是共享实例；AA 桥接通过 Profile 覆盖层拿到解包后的 Connector 与 uv 路径，Profile 不再建立指向应用的文件系统链接，因为链接无法进入归档。打包后的 Host 保留 Electron 的归档视图，所以工作区里名为 `*.asar` 的文件会被当作归档读取，与上游桌面端一致。两个归档 fuse 与上游发布一样保持关闭。有一个文件出于兼容性留在归档之外：`Contents/Resources/app/package.json`，它是归档内清单的逐字节副本，作为 extra resource 复制进包，因为 2.0.14-next 到 2.0.17-next 随包发布的更新器校验下载的磁盘镜像时会在这个归档前的位置读取清单，缺失即拒绝整个镜像。Electron 先装载 `app.asar` 再找 `app`，所以这个副本不会改变启动的应用；`afterPack` 钩子、最终产物检查和 `verify-mac-release.ts` 要求 macOS 包带有它、与归档内清单及本次发布版本一致，且该目录不得再有其他内容。Windows 不带 `app` 目录，因为其更新器只读取安装器的版本资源。所有入口仅构建产物，不发布、不启动 GUI；正式发布仍须先通过 AA 最新构建和仓库检查。
+打包复用接入的 Windows x64 NSIS 流程，安装包遵循现有未签名构建策略；`package:dir` 构建同一棵目录树。与上游桌面端一样，应用归档为 `app.asar`；原生模块、可执行文件、嵌套 bundle、随包 pnpm、AA 桥接的 Connector 工程、Node shim 和图标资源解包在归档旁，因为 Electron 的归档视图只服务自己的 `fs` 和 `dlopen`，子进程、shell 和 `nativeImage` 看不到它。Host、终端里的 `dsh` 命令和恢复助手的插件 CLI 都以 Electron 的 Node 模式从归档运行；Host 通过上游的模块钩子把 LibreOffice 引擎解析到解包副本，并通过 Next 自己的钩子把 agent preset 包的清单解析到解包副本，因为创造模式 preset 把该包的 `skills/` 作为 `skill-filesystem` 的自定义根目录挂载，Host 的文件系统服务用 `bigint` stat 列目录，而 Electron 的归档视图对归档内条目给不出 bigint 结果，并通过另一个 Next 钩子把 computer use 驱动的平台包解析到解包副本，因为驱动会把该包里的库路径交给系统加载器，而系统加载器不读取归档，并通过第三个 Next 钩子把徽章技能包解析到解包副本，因为该技能要模型从它宣告的目录取 `dsh-badge.png`，而 shell 和 Host 的文件系统服务都读不到归档内的文件，解包副本发出的模块请求按归档副本解析，所以它的依赖仍是共享实例；AA 桥接通过 Profile 覆盖层拿到解包后的 Connector 与 uv 路径，Profile 不再建立指向应用的文件系统链接，因为链接无法进入归档。打包后的 Host 保留 Electron 的归档视图，所以工作区里名为 `*.asar` 的文件会被当作归档读取，与上游桌面端一致。两个归档 fuse 与上游发布一样保持关闭。Windows 归档旁不带 `app` 目录，因为其更新器只读取安装器的版本资源；一旦出现解包的应用目录，`afterPack` 钩子即判定构建失败。所有入口仅构建产物，不发布、不启动 GUI；正式发布仍须先通过 AA 最新构建和仓库检查。
 
-归档遵循上游桌面端的文件策略，而且载荷有两个彼此独立的来源，就像上游桌面端先准备 dsh 目录树、再交给 electron-builder 归档一样。每次运行 electron-builder 之前，`scripts/prepare-payload.ts` 都会物化 `.desktop-build/payload/`：壳文件；按 electron-builder 的方式转换过的应用清单，其中已套用来自 `DSH_NEXT_BUILD_VERSION` 的演练版本并移除仅构建使用的字段；以及按 Node 的解析方式从已安装目录树复制出的生产依赖闭包，复制时套用文件策略（source map、TypeScript 声明、构建缓存、包管理器元数据、其他平台的 LibreOffice 引擎和 node-pty 预构建文件），嵌套的 `node_modules` 保持安装器放置的位置，链接进来的 `dsh-community-market` 工作区按其发布文件列表复制，每个依赖的清单也按 electron-builder 的方式清理。随后准备步骤在载荷根目录封存 `desktop-runtime.json`：Next、dsh、Electron 与 pnpm 版本，平台及载荷所含原生文件的架构（macOS 为两种 Darwin CPU，Windows 为 x64），每个直接依赖的共享包记录，以及每个文件的字节数、SHA-256、可执行位和 Mach-O 标记；描述文件写入后立即对照准备好的目录树校验。electron-builder 通过两个文件集把该目录原样归档，即载荷本身和它的根 `node_modules`（否则 electron-builder 会把后者排除在外）；它在 `beforeBuild` 中放弃自己的依赖收集，并按配置的模式解包原生模块、可执行文件和需经 shell 执行的文件。`afterPack` 钩子把组装好的归档及其解包文件当作这份安装的第二个副本打开：检查每个打包清单声明的依赖闭包都能解析，拒绝策略要求省略的任何条目以及留在归档内的原生代码或需经 shell 执行的文件，并要求归档逐字节内嵌准备步骤封存的描述文件、且与其清单完全一致，不一致时指出第一个有差异的文件。universal macOS 构建会对每个 CPU 各执行一次钩子，再对合并后的应用执行一次；三份归档都来自同一棵准备好的目录树，所以 universal 构建直接保留一份归档而不合并两份（`mergeASARs: false`）。合并只会改写一类载荷文件：@electron/universal 会解析应用里的每一个 `Info.plist`，包括解包文件中嵌套 bundle 的，注入归档完整性信息后重新序列化；这样的文件只有在准备树中的原件仍与其记录一致、且两者解析后除 `ElectronAsarIntegrity` 外内容完全相同时才被接受，构建日志会列出它们。所有产物构建完成后，再以同样的容忍规则加上代码签名容忍，把最终应用与归档内的描述文件比对，因为 electron-builder 在此之后才签名解包的 Mach-O 文件和嵌套 bundle，签名本身由 `verify-mac-release.ts` 验证；随后用打包好的 Electron 以 Node 模式从归档导入壳模块，并用私有数据目录从归档启动真实 Host，期间启用社区市场并执行一次诊断导出以运行其 worker 线程，若 Host 向普通浏览器暴露应用则判定失败。安装版启动时从归档内读取描述文件，并与自身版本、已安装的 `@deepseek-ai/dsh`、平台和 CPU 比对；不一致时打开恢复助手而不进入工作区。
+归档遵循上游桌面端的文件策略，而且载荷有两个彼此独立的来源，就像上游桌面端先准备 dsh 目录树、再交给 electron-builder 归档一样。每次运行 electron-builder 之前，`scripts/prepare-payload.ts` 都会物化 `.desktop-build/payload/`：壳文件；按 electron-builder 的方式转换过的应用清单，其中已套用来自 `DSH_NEXT_BUILD_VERSION` 的演练版本并移除仅构建使用的字段；以及按 Node 的解析方式从已安装目录树复制出的生产依赖闭包，复制时套用文件策略（source map、TypeScript 声明、构建缓存、包管理器元数据、其他平台的 LibreOffice 引擎和 node-pty 预构建文件），嵌套的 `node_modules` 保持安装器放置的位置，链接进来的 `dsh-community-market` 工作区按其发布文件列表复制，每个依赖的清单也按 electron-builder 的方式清理。随后准备步骤在载荷根目录封存 `desktop-runtime.json`：Next、dsh、Electron 与 pnpm 版本，平台及载荷所含原生文件的架构（Windows x64），每个直接依赖的共享包记录，以及每个文件的字节数、SHA-256、可执行位和 Mach-O 标记；描述文件写入后立即对照准备好的目录树校验。electron-builder 通过两个文件集把该目录原样归档，即载荷本身和它的根 `node_modules`（否则 electron-builder 会把后者排除在外）；它在 `beforeBuild` 中放弃自己的依赖收集，并按配置的模式解包原生模块、可执行文件和需经 shell 执行的文件。`afterPack` 钩子把组装好的归档及其解包文件当作这份安装的第二个副本打开：检查每个打包清单声明的依赖闭包都能解析，拒绝策略要求省略的任何条目以及留在归档内的原生代码或需经 shell 执行的文件，并要求归档逐字节内嵌准备步骤封存的描述文件、且与其清单完全一致，不一致时指出第一个有差异的文件。钩子对这份唯一的 x64 归档执行一次。所有产物构建完成后，再把最终应用与归档内的描述文件比对；随后用打包好的 Electron 以 Node 模式从归档导入壳模块，并用私有数据目录从归档启动真实 Host，期间启用社区市场并执行一次诊断导出以运行其 worker 线程，若 Host 向普通浏览器暴露应用则判定失败。安装版启动时从归档内读取描述文件，并与自身版本、已安装的 `@deepseek-ai/dsh`、平台和 CPU 比对；不一致时打开恢复助手而不进入工作区。
 
-与上游桌面端一样，安装包在归档之外携带 primary runtime，位于 `Contents/Resources/runtime`（Windows 为 `resources/runtime`）：上游锁文件固定的独立 Python 3.12 及 numpy、pandas、python-docx、python-pptx、openpyxl、Pillow、lxml、XlsxWriter，独立 Node，随包 pnpm，以及每份载荷旁的 Office 技能资源。macOS 发布包是一个 universal 应用，因此每个 CPU 各带一份载荷，`runtime/arm64/primary-runtime` 和 `runtime/x64/primary-runtime`，各自带有自己的 `office-skills`；安装版壳按自身运行的 CPU 选择载荷并交给 Host。Windows 只带 `runtime/x64`。每次运行 electron-builder 之前，`scripts/prepare-runtime.ts` 把上游锁文件（`deepseek-harness/scripts/primary-runtime/lock.json`）固定的压缩包和 wheel 下载到 `.desktop-build/downloads`，在 `.desktop-build/runtime/<cpu>` 下组装每份载荷并按上游方式裁剪 NumPy 与 pandas 的测试套件，写入记录产品版本和载荷摘要的 `runtime.json`，校验整棵树（清单的平台、CPU 和版本，Node 与 pnpm 入口，所声明 CPU 的 thin Mach-O 解释器，Office 检查器和技能），再执行本机能运行的载荷：本机 CPU 的那份，以及 Apple Silicon 主机装有 Rosetta 时的 Intel 那份。electron-builder 把这棵树作为 extra resources 原样复制；`afterPack` 钩子和最终产物检查会再次校验，`verify-mac-release.ts` 则在挂载的镜像中运行本机载荷。`dev` 和 `start` 脚本在每次开发启动前准备同一棵树，与上游桌面端的 `dev.ts` 一致；`corepack yarn workspace dsh-desktop-next prepare:runtime` 可单独执行这一步。只有 `.desktop-build/runtime/<cpu>/primary-runtime` 存在时 Host 才挂载 Office 技能，因此无头 Host 检查可以在没有载荷时启动；打包后的 Host 则要求载荷存在，缺失即失败。
+与上游桌面端一样，安装包在归档之外携带 primary runtime，位于 `resources/runtime`：上游锁文件固定的独立 Python 3.12 及 numpy、pandas、python-docx、python-pptx、openpyxl、Pillow、lxml、XlsxWriter，独立 Node，随包 pnpm，以及载荷旁的 Office 技能资源。Windows 只带 `runtime/x64`，也就是本产品打包的唯一目标。每次运行 electron-builder 之前，`scripts/prepare-runtime.ts` 把上游锁文件（`deepseek-harness/scripts/primary-runtime/lock.json`）固定的压缩包和 wheel 下载到 `.desktop-build/downloads`，在 `.desktop-build/runtime/x64` 下组装载荷并按上游方式裁剪 NumPy 与 pandas 的测试套件，写入记录产品版本和载荷摘要的 `runtime.json`，校验整棵树（清单的平台、CPU 和版本，Node 与 pnpm 入口，Office 检查器和技能），并在宿主 CPU 匹配时执行它。electron-builder 把这棵树作为 extra resources 原样复制；`afterPack` 钩子和最终产物检查会再次校验。`dev` 和 `start` 脚本在每次开发启动前准备同一棵树，与上游桌面端的 `dev.ts` 一致；`corepack yarn workspace dsh-desktop-next prepare:runtime` 可单独执行这一步。只有 `.desktop-build/runtime/x64/primary-runtime` 存在时 Host 才挂载 Office 技能，因此无头 Host 检查可以在没有载荷时启动；打包后的 Host 则要求载荷存在，缺失即失败。
 
-Host 挂载上游的 Office 组合：`load_workspace_dependencies` 工具首次使用时把本 CPU 的载荷安装到 `<home>/dsh-runtimes/dsh-next-primary-runtime`（Next 自己的目录，因为 Next 与官方桌面端共用 `~/.dsh`，而该工具会替换清单不同的安装），以及 `office-docx`、`office-pptx`、`office-xlsx` 技能，它们拿到随包 Node 和解包后的 LibreOffice Kit CLI。CLI 由这个独立 Node 运行，而它读不了归档，所以 `beforePack` 钩子把两个 CPU 的完整 Office 包闭包解包在归档旁，载荷审计也要求这些根目录在那里。
+Host 挂载上游的 Office 组合：`load_workspace_dependencies` 工具首次使用时把本 CPU 的载荷安装到 `<home>/dsh-runtimes/dsh-next-primary-runtime`（Next 自己的目录，因为 Next 与官方桌面端共用 `~/.dsh`，而该工具会替换清单不同的安装），以及 `office-docx`、`office-pptx`、`office-xlsx` 技能，它们拿到随包 Node 和解包后的 LibreOffice Kit CLI。CLI 由这个独立 Node 运行，而它读不了归档，所以 `beforePack` 钩子把Windows x64 的完整 Office 包闭包解包在归档旁，载荷审计也要求这些根目录在那里。
 
-签名的 macOS 发布版在运行 electron-builder 之前先给载荷签名，与上游桌面端一致：每个 Mach-O 文件都获得带 hardened runtime、时间戳和逐文件标识符的 Developer ID 签名，安全时间戳请求失败的签名最多尝试三次；独立 Node 获得 V8 所需的 JIT 权限，x64 的 Node 额外获得 `com.apple.security.cs.allow-unsigned-executable-memory` 以便使用可执行代码页，包括在 Rosetta 下运行时；Python 及其扩展模块不带任何权限。`signIgnore` 阻止 electron-builder 用继承的应用权限重新签名载荷，universal 合并规则则让它们在两个 CPU 构建之间保持一致。没有这一步，Python 的 `.so` 扩展模块会保持未签名，因为 osx-sign 只签无扩展名的二进制、`.dylib` 和 `.node` 文件，而公证会拒绝未签名的 Mach-O 代码。通过 `MAC_CERT_P12_BASE64` 提供的 PKCS#12 证书会在这一步导入临时钥匙串；登录钥匙串中的身份直接使用。`verify-mac-release.ts` 在挂载的镜像中检查签名、权限策略和本机载荷的导入。
+Windows 打包产出未签名安装包：随包解释器和应用都不签名，Authenticode 属于单独的发布步骤。接入的 Windows 流程会从打包环境中剥离所有代码签名凭据，并传入 `--config.win.signExecutable=false`，因此即使机器上配置了证书也不会改变构建产物。`afterPack` 钩子校验组装好的归档，最终产物检查校验可执行文件的 fuse、封存的归档与随包载荷。
 
-桌面设置和托盘均可检查更新。安装版启动后延迟检查，之后每 6 小时检查一次；只有用户点击下载才下载。托盘显示字节数或百分比，完成后点击“安装并重启”。安装前先隐藏窗口并停止 Host。macOS 校验 Next 身份、版本和签名团队，将已下载 DMG 中的应用封装为本地 ZIP，交给 Electron 的 Squirrel.Mac 原生更新器验证和替换；不会改写应用目录或降低签名要求。身份和版本校验读取挂载镜像中的 `Contents/Resources/app/package.json`，归档后的发布版正是为这一步保留了归档内清单的副本。Windows 校验 Next 安装器身份和版本，交接给 NSIS 静默更新并重新启动。开发运行只允许检查，不替换源码或 Electron 开发运行时。
+桌面设置和托盘均可检查更新。安装版启动后延迟检查，之后每 6 小时检查一次；只有用户点击下载才下载。托盘显示字节数或百分比，完成后点击“安装并重启”。安装前先隐藏窗口并停止 Host。Windows 校验 Next 安装器身份和版本，启动可见的 NSIS 安装流程；机器级提权前先等待旧应用退出，之后以 `--updated --force-run` 重新启动。开发运行只允许检查，不替换源码或 Electron 开发运行时。
 
-服务契约沿用 AA landingpage：`GET https://www.dshdesktop.cn/api/desktop/version`，请求头 `X-DSH-Desktop-Channel: next` 和当前版本；安装标识只发给版本接口。下载使用 `/api/downloads/mac` 或 `/api/downloads/windows`，固定 `X-DSH-Desktop-Target-Version`，跨存储重定向不携带这些请求头。仅接受 Next 版本，服务提供 SHA-256 时强制校验；错误、空渠道和旧版服务均不会显示“已是最新版本”。服务端必须部署 Next 通道支持并配置真实产物，且版本与包内版本一致（支持 `x.y.z-next` 和 `x.y.z-next.N`）。
+服务契约沿用 AA landingpage：`GET https://www.dshdesktop.cn/api/desktop/version`，请求头 `X-DSH-Desktop-Channel: next` 和当前版本；安装标识只发给版本接口。下载使用 `/api/downloads/windows`，固定 `X-DSH-Desktop-Target-Version`，跨存储重定向不携带这些请求头。仅接受 Next 版本，服务提供 SHA-256 时强制校验；错误、空渠道和旧版服务均不会显示“已是最新版本”。服务端必须部署 Next 通道支持并配置真实产物，且版本与包内版本一致（支持 `x.y.z-next` 和 `x.y.z-next.N`）。
 
 安装包字节改由 Chromium 的 `net.request` 传输，而不再使用 `net.fetch`：在 `redirect: 'manual'` 下 Electron 的 fetch 会拒绝重定向并抛出 `Redirect was cancelled`，而不是把 3xx 响应交回来，因此服务端指向存储路径的 `302` 永远无法被跟随。新传输层每一跳单独发起一个请求，每一跳都用同一条 HTTPS 与默认端口规则校验，首跳之后不再携带发布选择头，安装包流量走非持久化会话分区，因此不携带任何应用 Cookie。macOS 与 Windows 的下载端点都会重定向到存储路径；只能接受直接 `200` 的客户端无法完成更新。
 

@@ -9,7 +9,7 @@ import { nextPackagingTarget, nextPayloadRelease, PAYLOAD_DIR, verifyNextPayload
 import { DESKTOP_RUNTIME_FILE, physicalPayload, sealPayload, verifyPayload, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /** Shell entries copied beside the dependency tree; `package.json` is written separately. */
-const SHELL_ENTRIES = ['lib', 'assets', 'build/app-icon.ico', 'build/app-icon.png', 'build/app-icon-mac.png',
+const SHELL_ENTRIES = ['lib', 'assets', 'build/app-icon.ico', 'build/app-icon.png',
   'cordis.patch.yml', 'host.cordis.patch.yml', 'scripts/node-bin'] as const
 
 /** Names electron-builder's walker never copies; the inventory has to agree with it. */
@@ -260,11 +260,11 @@ function electronVersion(desktopRoot: string): string {
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const { values } = parseArgs({ options: { platform: { type: 'string' }, version: { type: 'string' } }, allowPositionals: false })
+  const { values } = parseArgs({ options: { version: { type: 'string' } }, allowPositionals: false })
   const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   await preparePayload({
     desktopRoot, output: join(desktopRoot, ...PAYLOAD_DIR.split('/')),
-    target: nextPackagingTarget((values.platform ?? process.platform) as NodeJS.Platform),
+    target: nextPackagingTarget('win32'),
     electronVersion: electronVersion(desktopRoot),
     ...(values.version === undefined ? {} : { extraMetadata: { version: values.version } }),
     log: message => console.log(message),

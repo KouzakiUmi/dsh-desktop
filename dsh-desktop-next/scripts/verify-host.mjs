@@ -7,10 +7,11 @@ import { delimiter, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DesktopHostProcess } from '../lib/host-process.js'
 import { NextRecovery } from '../lib/recovery.js'
-import { NEXT_PACKAGE, NextProfiles } from '../lib/profiles.js'
+import { loadNextProfile, NEXT_PACKAGE, NextProfiles } from '../lib/profiles.js'
 import { bundledPnpmEntry, createPackageRunner } from '../lib/extensions.js'
 import { forwardWebRequest } from '../lib/web-document.js'
 import { startRecentRegistry } from './fixtures/recent-registry.mjs'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const home = mkdtempSync(join(tmpdir(), 'dsh-next-host-'))
@@ -47,11 +48,20 @@ try {
   const dir = manager.ensure('desktop')
   writeFileSync(join(dir, 'pnpm-workspace.yaml'), `storeDir: ${JSON.stringify(join(home, 'store'))}\n`)
   manager.setFeatures('desktop', { remoteControl: true, market: true, dshMarket: true })
-  // Install only a local empty fixture. No catalog, registry or user profile is changed.
+  // The local fixture exposes only the gateway's interaction-readiness fact; no user profile or catalog is touched.
   const fixture = join(home, 'fixture-plugin')
   mkdirSync(fixture)
-  writeFileSync(join(fixture, 'package.json'), JSON.stringify({ name: 'fixture-next-plugin', version: '1.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
-  writeFileSync(join(fixture, 'cordis.patch.yml'), '[]\n')
+  writeFileSync(join(fixture, 'package.json'), JSON.stringify({ name: 'fixture-next-plugin', version: '1.0.0', type: 'module', exports: { '.': './index.mjs', './package.json': './package.json' }, dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+  writeFileSync(join(fixture, 'cordis.patch.yml'), '- insert:\n    - id: fixture-aa-peer\n      name: fixture-next-plugin\n')
+  writeFileSync(join(fixture, 'index.mjs'), `export const name = 'fixture-aa-peer';
+export const inject = ['connection', 'typertGateway'];
+export function apply(ctx) {
+  ctx.effect(() => ctx.connection.fetch.register({
+    path: '/api/fixture-aa-availability', methods: ['GET'], requestBody: 'buffered',
+    fetch: async () => Response.json({ ready: ctx.typertGateway.hasLiveClient() }),
+  }));
+}
+`)
   runner = createPackageRunner(pnpmInvocation, dir)
   const { createDesktopPluginRuntime } = await import(new URL('./lib/dsh-cli.js', pathToFileURL(createRequire(import.meta.url).resolve('dshmarket/package.json'))))
   const marketRuntime = createDesktopPluginRuntime(runner, dir, home)
@@ -64,6 +74,8 @@ try {
   await runner.dispose()
   const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
   assert.ok(manifest.dsh.profile.bundles.includes('fixture-next-plugin'), 'Official plugin operations must activate the bundle')
+  const selectedFixture = loadNextProfile(dir, home).skippedBundles.find(entry => entry.packageName === 'fixture-next-plugin')
+  assert.equal(selectedFixture, undefined, selectedFixture?.reason)
   let { origin, cookie } = await boot('desktop')
   assert.ok(existsSync(join(home, '.agents-anywhere', 'dsh-bridge-next')),
     'AA must resolve its default shared state inside the smoke user home')
@@ -77,6 +89,28 @@ try {
     assert.equal(reply.result.ok, true, JSON.stringify(reply))
     return reply.result.value
   }
+  const deniedPeerProbe = await fetch(`${origin}/api/fixture-aa-availability`, { headers: { origin } })
+  assert.equal(deniedPeerProbe.status, 401, 'The fixture must not bypass Host authentication')
+  await deniedPeerProbe.body?.cancel()
+  let reportedPendingPeer = false
+  const peerReadySignal = AbortSignal.timeout(60_000)
+  for (;;) {
+    const response = await fetch(`${origin}/api/fixture-aa-availability`, { headers: { cookie, origin }, signal: peerReadySignal })
+    if (response.status === 404) {
+      await response.body?.cancel()
+      if (!reportedPendingPeer) {
+        reportedPendingPeer = true
+        const entries = (await rpc("listPlugins")).filter(row => row.moduleName?.includes("fixture"))
+        console.log("verify-host: pending fixture " + JSON.stringify(entries.map(row => ({ moduleName: row.moduleName, phase: row.fiberPhase }))))
+      }
+    }
+    else {
+      assert.equal(response.status, 200)
+      if ((await response.json()).ready) break
+    }
+    await delay(20, undefined, { signal: peerReadySignal })
+  }
+  console.log('verify-host: AA registers a live owner interaction client through the actual Core gateway')
   // The official overview discovers installation-owned bundles from direct
   // dependencies, even when their packages are already present transitively.
   const officialRows = await rpc('listPlugins')
@@ -158,7 +192,8 @@ try {
   assert.equal(state.status, 200, await state.clone().text())
   const stateBody = await state.json()
   assert.ok(Array.isArray(stateBody.sources))
-  assert.deepEqual(stateBody.desktopActions, { openTerminal: ['darwin', 'win32'].includes(process.platform) })
+  // The Windows shell always exposes its terminal handoff, so the action list is constant.
+  assert.deepEqual(stateBody.desktopActions, { openTerminal: true })
   const nativeToken = 'fixture-native-request'
   const call = async (path, body, expected = 200) => {
     // Match the native session marker, including an absent Origin header.

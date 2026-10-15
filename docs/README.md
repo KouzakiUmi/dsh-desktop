@@ -29,9 +29,9 @@
 | [VS Code 扩展模型调研](../dsh-community-fabric/docs/research/vscode-extension-model.zh.md) | VS Code 已实现的声明、Provider、UI、运行位置和生命周期模式，以及它们对 Fabric RFC 的具体约束 |
 | [Community Market 设计](../dsh-community-market/README.zh.md) | 规划中的插件市场壳、可扩展目录来源、用户选择、安装确认和安全边界 |
 | [Market 目录提供方合同](../dsh-community-market/docs/catalog-provider-contract.zh.md) | 面向后续实现团队的 Schema、query 参数、多来源和适配器规范 |
-| [架构说明](architecture.md) | Electron、Host、Web carrier、profile 和打包之间的关系 |
-| [Desktop service 参考](../dsh-plugin-desktop/docs/plugin-services.md) | `desktopProfiles`、`desktopPnpm` 的稳定 contract 和 TypeScript 示例 |
-| [包级参考](../dsh-plugin-desktop/README.md) | 完整的构建、运行、发布和已知限制 |
+| [上游同步维护](<upstream-sync.md>) | 必须保留的补丁、不可回导内容、产物同步顺序和回归矩阵 |
+| [历史架构参考](<architecture.md>) | 早期 Stable/Beta 设计背景，不是当前产品支持清单 |
+| [NEXT 包级参考](<../dsh-desktop-next/README.zh.md>) | 当前 Windows x64 构建、运行、发布与已知限制 |
 
 ## README 文件怎么分工
 
@@ -41,10 +41,10 @@
 - [`README.en.md`](../README.en.md)：英文产品入口，与中文 README 保持同一产品范围。
 - [`README.zh.md`](../README.zh.md)：旧中文路径的兼容页，不维护独立内容。
 
-`README.i18n.yaml` 只记录这两个正式入口的双语 hash，不是用户指南。`dsh-plugin-desktop/README.md` 和 `dsh-plugin-desktop/README.zh.md` 是 npm 包随包发布的包级参考；它们比根 README 更技术化。`dsh-plugin-desktop/docs/` 是稳定 API 合同，不是营销页。`.agents/notes/implemented/` 是日期化的维护者决策记录，适合追溯取舍，不替代用户文档。
+[README 双语记录](<../README.i18n.yaml>) 只记录正式产品入口的 hash，不是用户指南。当前技术参考由 [NEXT 包级说明](<../dsh-desktop-next/README.zh.md>) 和[上游同步维护指南](<upstream-sync.md>)维护；已删除的旧包及其服务文档不能作为恢复旧实现的依据。维护者决策记录保留历史取舍，不替代当前产品文档。
 
-`deepseek-harness/` 是固定版本的官方上游子模块。它自己的 README 和 `docs/` 属于上游项目，不能当作 Desktop 文档，也不在本仓库的产品文档统计中。
+Core 子模块固定到[来源记录](<../upstream.json>)中的维护提交，保留上游源码结构和本项目必要补丁。其文档属于 Core，不是 Desktop 产品文档；不能仅凭相同 npm 版本号认定为未修改的官方发行包。
 
 ## 状态约定
 
-文档会明确区分已实现能力、平台限制和 roadmap。Desktop 的兼容模式在独立 Desktop frame 下保留上游默认 Web 客户端；扩展窗口安装自己独立注册的 Desktop layout/sidebar surface，并在倒 L 中承载官方 occupant；增强模式保留独立 root registration 与紧凑内部 caption。Desktop frame 会按系统能力提供原生材质。插件市场已建立 [`dsh-community-market`](../dsh-community-market/README.zh.md) 文档初始化工程，但尚无可用页面或安装器；手机远程和 Channels 也仍是独立 roadmap，不代表当前安装包已经提供这些产品入口。
+文档应区分已实现能力、平台限制、未验收项目和 roadmap。当前产品入口是 Windows x64 NEXT，实际组成与验收命令以 [NEXT 包级说明](<../dsh-desktop-next/README.zh.md>) 为准；早期 Stable/Beta 的平台、窗口模式和 API 描述只作历史参考，不能据此恢复旧目录、旧通道或其它平台支持。

@@ -1,20 +1,22 @@
-/** Real Electron guests against pages with anti-framing headers; Linux Xvfb only, never opens the user's desktop. */
+/** Real Electron guests against pages with anti-framing headers; Windows x64 only, hidden windows throughout. */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { DesktopBrowserGuests } from '../lib/browser-guests.js'
+import { isVerificationHome } from './verification-scratch.mjs'
 
-if (process.platform !== 'linux' || !process.env.DISPLAY) {
-  console.error('Run this native Browser check on Linux under xvfb-run; portable checks do not start Electron.')
+const HOME_PREFIX = 'sidebar-browser-'
+
+if (process.platform !== 'win32' || process.arch !== 'x64') {
+  console.error('Run this native Browser check on Windows x64; portable checks do not start Electron.')
   app.exit(1)
 } else { void verify() }
 
 async function verify() {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-native-browser-'))
+  const home = process.argv[process.argv.indexOf('--verification-home') + 1]
+  assert.ok(isVerificationHome(home, HOME_PREFIX), 'Run yarn verify:sidebar-browser through its private-home launcher')
   app.setPath('userData', home)
+  app.setPath('sessionData', home)
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'text/html')
     if (request.url === '/embed') {
@@ -95,7 +97,6 @@ async function verify() {
     clearTimeout(deadline)
     window?.destroy()
     await new Promise(resolve => server.close(resolve))
-    rmSync(home, { recursive: true, force: true })
     app.exit(code)
   }
 }

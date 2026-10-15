@@ -1,13 +1,13 @@
-/** Prepare, execute and check the bundled interpreter payloads for every CPU one Next package carries. */
+/** Prepare, execute and check the bundled Windows x64 interpreter payload one Next package carries. */
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '@deepseek-ai/dsh-tool-workspace-dependencies'
-import { machOArchitectures, preparePrimaryRuntime, readPrimaryRuntimeLock, rosettaAvailable, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime.ts'
+import { preparePrimaryRuntime, readPrimaryRuntimeLock, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime.ts'
 
-/** CPU of one bundled payload. */
-export type NextRuntimeArch = 'arm64' | 'x64'
+/** CPU of one bundled payload. Next ships Windows x64 only. */
+export type NextRuntimeArch = 'x64'
 
 /** One payload the package carries. */
 export interface NextRuntimeTarget {
@@ -16,15 +16,14 @@ export interface NextRuntimeTarget {
 }
 
 /**
- * Payloads one Next package carries: both Darwin CPUs, because macOS releases are universal and the
- * installed slice selects its payload at runtime; Windows x64 only; nothing on other platforms.
+ * Select the Windows x64 interpreter payload; reject unsupported targets before filesystem changes.
  * @param platform - Electron platform being packaged.
- * @returns Locked targets and their CPUs.
+ * @param arch - Host CPU, which must be x64.
+ * @returns The locked Windows x64 target.
  */
-export function nextRuntimeTargets(platform: NodeJS.Platform): readonly NextRuntimeTarget[] {
-  if (platform === 'darwin') return [{ target: 'mac-arm64', arch: 'arm64' }, { target: 'mac-x64', arch: 'x64' }]
-  if (platform === 'win32') return [{ target: 'win-x64', arch: 'x64' }]
-  return []
+export function nextRuntimeTargets(platform: NodeJS.Platform, arch: NodeJS.Architecture = process.arch): readonly NextRuntimeTarget[] {
+  if (platform !== 'win32' || arch !== 'x64') throw new Error(`Next runtime requires Windows x64, received ${platform} ${arch}`)
+  return [{ target: 'win-x64', arch: 'x64' }]
 }
 
 /**
@@ -81,17 +80,13 @@ export interface PrepareNextRuntimeOptions {
  * Materialize every payload of the platform from the upstream lock, replacing the previous tree.
  * First use downloads the locked archives; later runs reuse the cache.
  * @param options - Package root, platform and product version.
- * @returns The runtime root, empty for platforms without a payload.
+ * @returns The prepared Windows x64 runtime root.
  */
 export async function prepareNextRuntime(options: PrepareNextRuntimeOptions): Promise<string> {
+  const targets = nextRuntimeTargets(options.platform)
   const paths = nextRuntimeBuildPaths(options.desktopRoot)
   const log = options.log ?? console.log
   rmSync(paths.runtime, { recursive: true, force: true })
-  const targets = nextRuntimeTargets(options.platform)
-  if (targets.length === 0) {
-    log(`Next ships no interpreter payload for ${options.platform}`)
-    return paths.runtime
-  }
   const lock = readPrimaryRuntimeLock()
   const skillSource = join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets')
   for (const { target, arch } of targets) {
@@ -102,10 +97,9 @@ export async function prepareNextRuntime(options: PrepareNextRuntimeOptions): Pr
 }
 
 /**
- * Execute every payload this host can run: the native CPU directly, and the Intel payload under
- * Rosetta when an Apple Silicon host has it. Other payloads are reported, not executed.
+ * Execute the Windows x64 payload; an incompatible host or payload is an error.
  * @param runtimeRoot - Prepared runtime root.
- * @param platform - Platform the payloads target.
+ * @param platform - Platform the payload targets.
  * @param log - Progress output.
  * @returns CPUs whose payload ran.
  */
@@ -113,11 +107,9 @@ export function smokeNextRuntime(runtimeRoot: string, platform: NodeJS.Platform,
   const executed: NextRuntimeArch[] = []
   for (const { arch } of nextRuntimeTargets(platform)) {
     const root = primaryRuntimeDirectory(runtimeRoot, arch)
-    const launcher = platform === 'darwin' && arch === 'x64' && process.arch === 'arm64' && rosettaAvailable() ? ['/usr/bin/arch', '-x86_64'] : undefined
-    if (smokePrimaryRuntime(root, { launcher })) {
-      executed.push(arch)
-      log(`Primary runtime smoke passed for ${arch}${launcher === undefined ? '' : ' under Rosetta'}`)
-    } else log(`Primary runtime smoke skipped for ${arch}: this ${process.platform} ${process.arch} host cannot execute it`)
+    if (!smokePrimaryRuntime(root)) throw new Error(`Next runtime ${arch} cannot execute on ${process.platform} ${process.arch}`)
+    executed.push(arch)
+    log(`Primary runtime smoke passed for ${arch}`)
   }
   return executed
 }
@@ -134,9 +126,8 @@ function requireFile(path: string, description: string): void {
 }
 
 /**
- * Check a prepared or packaged runtime root: every CPU's payload declares this platform, CPU and
- * version with Node and pnpm, its entry points and Office resources exist, and on macOS the
- * interpreters are thin Mach-O files of the declared CPU.
+ * Check a prepared or packaged runtime root: the payload declares the Windows x64 target and this
+ * version with Node and pnpm, and its entry points and Office resources exist.
  * @param runtimeRoot - `.desktop-build/runtime` or the packaged `Resources/runtime`.
  * @param platform - Platform the package targets.
  * @param expectedVersion - Product version every manifest must record.
@@ -158,12 +149,6 @@ export function verifyNextRuntimeTree(runtimeRoot: string, platform: NodeJS.Plat
     requireFile(entries.node, `${arch} Node executable`)
     requireFile(entries.pnpm, `${arch} pnpm entry`)
     if (!existsSync(entries.pythonPackages) || !statSync(entries.pythonPackages).isDirectory()) throw new Error(`Next runtime: missing ${arch} site-packages: ${entries.pythonPackages}`)
-    if (platform === 'darwin') {
-      for (const file of [entries.python, entries.node]) {
-        const slices = machOArchitectures(file)
-        if (slices.length !== 1 || slices[0] !== arch) throw new Error(`Next runtime: ${file} is ${slices.join('/') || 'not Mach-O'}, expected a thin ${arch} executable`)
-      }
-    }
     const skills = officeSkillsDirectory(runtimeRoot, arch)
     for (const skill of ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']) {
       requireFile(join(skills, skill, 'SKILL.md'), `${arch} ${skill} skill`)

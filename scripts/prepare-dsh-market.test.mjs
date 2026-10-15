@@ -73,6 +73,11 @@ test('does not accept an offline or malformed latest response', async () => {
 test('all root launch, build and packaging entry points prepare the market first', () => {
   const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const entrypoints = Object.entries(scripts).filter(([name]) => /^(build$|dev(?::|$)|start(?::|$)|package:dir|dist:)/.test(name))
-  assert.ok(entrypoints.length >= 18)
-  for (const [name, command] of entrypoints) assert.ok(command.startsWith('yarn market:prepare && '), name)
+  // Windows x64 is the only packaging target left, so the unqualified names are thin aliases of
+  // their *:next variant and only that variant prepares the market.
+  assert.ok(entrypoints.length >= 9)
+  for (const [name, command] of entrypoints) {
+    const prepared = command.startsWith('yarn market:prepare && ') || command === `yarn ${name}:next`
+    assert.ok(prepared, name)
+  }
 })

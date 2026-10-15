@@ -1,13 +1,13 @@
-/** Prepare, execute and check the bundled interpreter payloads for every CPU one Desktop package carries; ported from upstream Desktop. */
+/** Prepare, execute and check the bundled Windows x64 interpreter payload one Desktop package carries; ported from upstream Desktop. */
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '@deepseek-ai/dsh-tool-workspace-dependencies'
-import { machOArchitectures, preparePrimaryRuntime, readPrimaryRuntimeLock, rosettaAvailable, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime.ts'
+import { preparePrimaryRuntime, readPrimaryRuntimeLock, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime.ts'
 
-/** CPU of one bundled payload. */
-export type DesktopRuntimeArch = 'arm64' | 'x64'
+/** CPU of one bundled payload. Desktop ships Windows x64 only. */
+export type DesktopRuntimeArch = 'x64'
 
 /** One payload the package carries. */
 export interface DesktopRuntimeTarget {
@@ -16,15 +16,13 @@ export interface DesktopRuntimeTarget {
 }
 
 /**
- * Payloads one Desktop package carries: both Darwin CPUs, because macOS releases are universal and the
- * installed slice selects its payload at runtime; Windows x64 only; nothing on other platforms.
+ * Payload one Desktop package carries: the Windows x64 interpreters only. Every other platform
+ * returns an empty list, and the Windows packaging entry point refuses them before this is reached.
  * @param platform - Electron platform being packaged.
- * @returns Locked targets and their CPUs.
+ * @returns Locked target and its CPU, or nothing for a platform the product does not ship.
  */
 export function desktopRuntimeTargets(platform: NodeJS.Platform): readonly DesktopRuntimeTarget[] {
-  if (platform === 'darwin') return [{ target: 'mac-arm64', arch: 'arm64' }, { target: 'mac-x64', arch: 'x64' }]
-  if (platform === 'win32') return [{ target: 'win-x64', arch: 'x64' }]
-  return []
+  return platform === 'win32' ? [{ target: 'win-x64', arch: 'x64' }] : []
 }
 
 /**
@@ -38,7 +36,7 @@ export function desktopRuntimeBuildPaths(desktopRoot: string): { readonly runtim
 }
 
 /**
- * Payload directory of one CPU: `<root>/<arch>/primary-runtime`, with `office-skills` beside it as
+ * Payload directory of the CPU: `<root>/x64/primary-runtime`, with `office-skills` beside it as
  * upstream Desktop lays out `Resources/runtime`.
  * @param runtimeRoot - Prepared or packaged runtime root.
  * @param arch - Payload CPU.
@@ -49,7 +47,7 @@ export function primaryRuntimeDirectory(runtimeRoot: string, arch: DesktopRuntim
 }
 
 /**
- * Office skill resources of one CPU's payload.
+ * Office skill resources of the payload.
  * @param runtimeRoot - Prepared or packaged runtime root.
  * @param arch - Payload CPU.
  * @returns Absolute resource directory.
@@ -76,7 +74,7 @@ export interface PrepareDesktopRuntimeOptions {
 }
 
 /**
- * Materialize every payload of the platform from the upstream lock, replacing the previous tree.
+ * Materialize the payload of the platform from the upstream lock, replacing the previous tree.
  * First use downloads the locked archives; later runs reuse the cache.
  * @param options - Package root, platform and product version.
  * @returns The runtime root, empty for platforms without a payload.
@@ -100,10 +98,9 @@ export async function prepareDesktopRuntime(options: PrepareDesktopRuntimeOption
 }
 
 /**
- * Execute every payload this host can run: the native CPU directly, and the Intel payload under
- * Rosetta when an Apple Silicon host has it. Other payloads are reported, not executed.
+ * Execute the payload when this host can run it; a foreign host reports the skip instead.
  * @param runtimeRoot - Prepared runtime root.
- * @param platform - Platform the payloads target.
+ * @param platform - Platform the payload targets.
  * @param log - Progress output.
  * @returns CPUs whose payload ran.
  */
@@ -111,10 +108,9 @@ export function smokeDesktopRuntime(runtimeRoot: string, platform: NodeJS.Platfo
   const executed: DesktopRuntimeArch[] = []
   for (const { arch } of desktopRuntimeTargets(platform)) {
     const root = primaryRuntimeDirectory(runtimeRoot, arch)
-    const launcher = platform === 'darwin' && arch === 'x64' && process.arch === 'arm64' && rosettaAvailable() ? ['/usr/bin/arch', '-x86_64'] : undefined
-    if (smokePrimaryRuntime(root, launcher === undefined ? {} : { launcher })) {
+    if (smokePrimaryRuntime(root)) {
       executed.push(arch)
-      log(`Primary runtime smoke passed for ${arch}${launcher === undefined ? '' : ' under Rosetta'}`)
+      log(`Primary runtime smoke passed for ${arch}`)
     } else log(`Primary runtime smoke skipped for ${arch}: this ${process.platform} ${process.arch} host cannot execute it`)
   }
   return executed
@@ -132,9 +128,8 @@ function requireFile(path: string, description: string): void {
 }
 
 /**
- * Check a prepared or packaged runtime root: every CPU's payload declares this platform, CPU and
- * version with Node and pnpm, its entry points and Office resources exist, and on macOS the
- * interpreters are thin Mach-O files of the declared CPU.
+ * Check a prepared or packaged runtime root: the payload declares the Windows x64 target and this
+ * version with Node and pnpm, and its entry points and Office resources exist.
  * @param runtimeRoot - `.desktop-build/runtime` or the packaged `Resources/runtime`.
  * @param platform - Platform the package targets.
  * @param expectedVersion - Product version every manifest must record.
@@ -156,12 +151,6 @@ export function verifyDesktopRuntimeTree(runtimeRoot: string, platform: NodeJS.P
     requireFile(entries.node, `${arch} Node executable`)
     requireFile(entries.pnpm, `${arch} pnpm entry`)
     if (!existsSync(entries.pythonPackages) || !statSync(entries.pythonPackages).isDirectory()) throw new Error(`Desktop runtime: missing ${arch} site-packages: ${entries.pythonPackages}`)
-    if (platform === 'darwin') {
-      for (const file of [entries.python, entries.node]) {
-        const slices = machOArchitectures(file)
-        if (slices.length !== 1 || slices[0] !== arch) throw new Error(`Desktop runtime: ${file} is ${slices.join('/') || 'not Mach-O'}, expected a thin ${arch} executable`)
-      }
-    }
     const skills = officeSkillsDirectory(runtimeRoot, arch)
     for (const skill of ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']) {
       requireFile(join(skills, skill, 'SKILL.md'), `${arch} ${skill} skill`)
@@ -176,30 +165,27 @@ export interface PrepareDesktopInterpretersOptions {
   readonly desktopRoot: string
   /** Platform the payloads target; defaults to this host. */
   readonly platform?: NodeJS.Platform
-  /** Signs every payload in place before the final checks; signed macOS releases pre-sign the interpreters. */
-  readonly sign?: (runtimeRoot: string) => Promise<void>
   readonly log?: (message: string) => void
 }
 
 /**
- * Prepare every interpreter payload the platform ships, sign them when a release signer is given,
- * then check and execute the final bytes. Development launches and every packaging entry run this
- * first; electron-builder later copies the tree as extra resources.
- * @param options - Package root, target platform and optional signer.
+ * Prepare the interpreter payload the platform ships, then check and execute the final bytes.
+ * Development launches and every packaging entry run this first; electron-builder later copies the
+ * tree as extra resources.
+ * @param options - Package root and target platform.
  * @returns The prepared runtime root.
  */
 export async function prepareDesktopInterpreters(options: PrepareDesktopInterpretersOptions): Promise<string> {
   const platform = options.platform ?? process.platform
   const version = expectedDesktopVersion(options.desktopRoot)
   const root = await prepareDesktopRuntime({ desktopRoot: options.desktopRoot, platform, version, ...(options.log === undefined ? {} : { log: options.log }) })
-  if (options.sign !== undefined) await options.sign(root)
   verifyDesktopRuntimeTree(root, platform, version)
   smokeDesktopRuntime(root, platform, options.log)
   return root
 }
 
 /**
- * Re-check the prepared tree right before electron-builder copies it; the payloads were prepared
+ * Re-check the prepared tree right before electron-builder copies it; the payload was prepared
  * before the package gates started.
  * @param desktopRoot - Desktop package root.
  * @param platform - Platform the package targets.

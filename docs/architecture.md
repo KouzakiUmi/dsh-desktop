@@ -1,4 +1,6 @@
-# DSH Desktop 架构
+# DSH Desktop 历史架构参考
+
+> 本文保留早期 Stable/Beta 的设计背景，不是当前 NEXT 的目录、平台或公开 API 清单。当前维护约束与同步步骤见[上游同步维护指南](<upstream-sync.md>)，实际运行与打包见 [NEXT 包级说明](<../dsh-desktop-next/README.zh.md>)；不要据此恢复旧产品或 macOS/Linux 入口。
 
 ## 总览
 

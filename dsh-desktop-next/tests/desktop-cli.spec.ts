@@ -32,8 +32,7 @@ it('reads user files physically before the unpacked CLI starts', async () => {
 it('reads removed Windows Acrylic and Mica preferences as an opaque window', () => {
   expect(parsePreferences({ windowsMaterial: 'acrylic' }).windowsMaterial).toBe('off')
   expect(parsePreferences({ windowsMaterial: 'mica' }).windowsMaterial).toBe('off')
-  expect(windowMaterial({ ...DEFAULT_PREFERENCES }, 'win32')).toBe('off')
-  expect(windowMaterial({ ...DEFAULT_PREFERENCES }, 'linux')).toBe('off')
-  expect(windowMaterial({ ...DEFAULT_PREFERENCES }, 'darwin')).toBe('transparent')
-  expect(windowMaterial({ ...DEFAULT_PREFERENCES, macosMaterial: 'off' }, 'darwin')).toBe('off')
+  expect(windowMaterial({ ...DEFAULT_PREFERENCES })).toBe('off')
+  // The retired macOS material key stays readable but never selects a material.
+  expect(windowMaterial({ ...DEFAULT_PREFERENCES, macosMaterial: 'transparent' })).toBe('off')
 })
