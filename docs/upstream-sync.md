@@ -34,6 +34,8 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 
 Yarn 4.18.0 的递归审计遇到 patch:file 源描述符未绑定时可能内部断言失败，这不代表没有漏洞。若使用诊断适配，必须核对同版本实现，只把缺失的 file 描述符绑定到同 ident、同源路径且唯一的已登记 resolution；非 file 缺失或歧义必须失败。不得改全局 CLI、跳过图节点或省略完整原始报告；未来上游修复后应退休临时适配，而非长期依赖 minified 内部变量。
 
+构建主机需要代理时，只对构建子进程复用已有配置。当前 electron-builder 26.x 打包链的下载器需要显式设置 `ELECTRON_GET_USE_PROXY=true`，并将已有代理映射到 `GLOBAL_AGENT_HTTP_PROXY` / `GLOBAL_AGENT_HTTPS_PROXY`；仅有普通 HTTP_PROXY 不代表该下载器已启用代理。保留 TLS 证书和归档摘要校验，不把本机代理地址或凭据提交到仓库。升级下载器后按锁定版本重新核对这些开关。
+
 ## 3. 不应回导的内容
 
 - 不恢复 macOS/Linux 打包、签名、公证、universal/arm64 入口、Darwin Shell 环境捕获、macOS window material/traffic-light 处理、ICNS 与 tray template 图标；Windows 权限入口与原生来源选择仍需保留。

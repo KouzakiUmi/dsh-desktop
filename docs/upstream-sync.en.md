@@ -34,6 +34,8 @@ Prefer current same-major security fixes. Distinguish production, development, t
 
 Yarn 4.18.0 recursive audit can assert internally when a patch:file source descriptor is unbound; that does not mean there are no vulnerabilities. A diagnostic adapter must match that exact implementation and bind a missing file descriptor only to the unique registered resolution with the same ident and source path. Missing non-file descriptors or ambiguity must fail. Do not modify the global CLI, skip graph nodes or discard the full raw report. Retire temporary adaptation after an upstream fix rather than depending permanently on minified internals.
 
+When a build host needs a proxy, reuse existing settings only for the build child. The current electron-builder 26.x download stack requires `ELECTRON_GET_USE_PROXY=true` and mapping existing proxies to `GLOBAL_AGENT_HTTP_PROXY` / `GLOBAL_AGENT_HTTPS_PROXY`; ordinary HTTP_PROXY alone does not mean that downloader has enabled proxying. Keep TLS certificate and archive digest checks enabled, and never commit machine-specific proxy addresses or credentials. Recheck these switches against the locked version after upgrading the downloader.
+
 ## 3. Do not import these back
 
 - Do not restore macOS/Linux packaging, signing, notarization, universal/arm64 entry points, Darwin shell capture, macOS window-material/traffic-light handling, ICNS or tray-template icons. Keep Windows privacy entry points and native source selection.
