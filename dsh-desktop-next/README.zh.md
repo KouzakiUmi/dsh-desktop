@@ -170,7 +170,7 @@ Host 挂载上游的 Office 组合：`load_workspace_dependencies` 工具首次�
 
 Windows 打包产出未签名安装包：随包解释器和应用都不签名，Authenticode 属于单独的发布步骤。接入的 Windows 流程会从打包环境中剥离所有代码签名凭据，并传入 `--config.win.signExecutable=false`，因此即使机器上配置了证书也不会改变构建产物。`afterPack` 钩子校验组装好的归档，最终产物检查校验可执行文件的 fuse、封存的归档与随包载荷。
 
-桌面设置和托盘均可检查更新。安装版启动后延迟检查，之后每 6 小时检查一次；只有用户点击下载才下载。托盘显示字节数或百分比，完成后点击“安装并重启”。安装前先隐藏窗口并停止 Host。Windows 校验 Next 安装器身份和版本，启动可见的 NSIS 安装流程；机器级提权前先等待旧应用退出，之后以 `--updated --force-run` 重新启动。开发运行只允许检查，不替换源码或 Electron 开发运行时。
+桌面设置和托盘均可检查更新。安装版启动后延迟检查，之后每 6 小时检查一次；只有用户点击下载才下载。托盘显示字节数或百分比，完成后点击“安装并重启”。安装前先隐藏窗口并停止 Host。Windows 校验 Next 安装器身份和版本，以 `--updated --force-run` 启动可见的 NSIS 安装流程；机器级提权前先等待旧应用退出，解包完成后以原用户身份重新启动应用。开发运行只允许检查，不替换源码或 Electron 开发运行时。
 
 服务契约沿用 AA landingpage：`GET https://www.dshdesktop.cn/api/desktop/version`，请求头 `X-DSH-Desktop-Channel: next` 和当前版本；安装标识只发给版本接口。下载使用 `/api/downloads/windows`，固定 `X-DSH-Desktop-Target-Version`，跨存储重定向不携带这些请求头。仅接受 Next 版本，服务提供 SHA-256 时强制校验；错误、空渠道和旧版服务均不会显示“已是最新版本”。服务端必须部署 Next 通道支持并配置真实产物，且版本与包内版本一致（支持 `x.y.z-next` 和 `x.y.z-next.N`）。
 
