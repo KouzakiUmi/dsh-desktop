@@ -167,5 +167,6 @@ jobs:
         with:
           node-version: 22.23.2
       - run: corepack enable
+      - run: yarn install --immutable
       - run: yarn check:layout
       - run: yarn upstream:version

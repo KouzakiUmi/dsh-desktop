@@ -76,7 +76,7 @@ corepack yarn install
 | `verify:window-controls`、`verify:onboarding` | 官方前端 Desktop boot、Windows/通用 sidebar/settings、插件面板、原生 Browser 呈现与 Web iframe fallback；preload/IPC 是模拟的，不算原生 Electron 验收。 |
 | `verify:safe-cleanup` | 真 Electron Node 模式中的六项 close/restart × readonly/external/ancestor 组合；外部与祖先目标的 sentinel 必须可写且保留。至少检查两个独立进程并发的私有目录隔离。 |
 | `verify:protocol`、`verify:plugin-frames`、`verify:sidebar-browser` | 真 Windows x64 Electron 的认证、来源隔离、重定向、上传/下载、反 iframe、guest partition、历史和生命周期。Node launcher 拥有私有 home，只改子环境，等待进程退出后清理；CI 不默认关闭 sandbox。 |
-| Windows 打包检查 | 锁定 Windows x64 Node/Python/pnpm/Office 资源、payload 摘要、PE/图标/NSIS/fuse 校验；不运行安装器覆盖开发者现用应用。 |
+| Windows 打包检查 | `check:win-package` 必须先构建运行时依赖的社区适配器，再执行 NEXT 门禁，不能依赖其它 CI job 或旧 lib。锁定 Windows x64 Node/Python/pnpm/Office 资源、payload 摘要、PE/图标/NSIS/fuse 校验；不运行安装器覆盖开发者现用应用。 |
 | 依赖审计 | 明确范围、实际退出码、漏洞与弃用提示及调用面防护；临时 staging workspace 不能自动算进 root 锁图的审计结论。 |
 
 不支持的目标必须在删除旧 runtime 前失败；[prepare-runtime 回归](<../dsh-desktop-next/tests/prepare-runtime.spec.ts>) 覆盖了 Linux/macOS 请求不能清除已有载荷，以及 arm64/ia32 拒绝。不要把“无目标返回空数组”或“执行不了就 skip”恢复为成功路径。

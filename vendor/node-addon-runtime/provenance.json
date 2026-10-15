@@ -8,7 +8,7 @@
     "repository": "https://github.com/deepseek-ai/dsh-node-addon-require-builtin",
     "commit": "a58d3599a2e551d7d706d1ff796c9fd4bbaff63c",
     "patch": "patches/node-addon-require-builtin@0.1.9-electron44.7.2.patch",
-    "patchSha256": "1c6a2d2d67f2b1e4e9414fc74c7a4fb419cfe7db820da11aabda5b4a0fa40d1c"
+    "patchSha256": "06bc22aa6910ad103180eacac4537350d414b9282522ef58d7dacabe1bf1f2db"
   },
   "target": {
     "os": "win32",
@@ -26,6 +26,7 @@
     "ordinaryNodeBackend": "24.13.0 passed",
     "electronNodeModeBackend": "44.7.2 passed",
     "runtimeProfilePositiveAndNegativeCases": "passed",
-    "electronMainProcess": "pending Windows CI"
+    "electronMainProcess": "44.7.2 passed in Windows CI",
+    "electronMainProcessEvidence": "https://github.com/KouzakiUmi/dsh-desktop/actions/runs/38767386908/job/116534305328"
   }
 }

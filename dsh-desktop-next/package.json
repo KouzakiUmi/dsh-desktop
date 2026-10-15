@@ -31,7 +31,7 @@
     "prepare:runtime": "node scripts/prepare-runtime.ts",
     "package:dir": "yarn build && node scripts/package.ts dir",
     "dist:win": "node scripts/package.ts win",
-    "check:win-package": "yarn check"
+    "check:win-package": "yarn workspace dsh-community-market build && yarn check"
   },
   "dependencies": {
     "@agents-anywhere/dsh-bridge-next": "file:../vendor/agents-anywhere/agents-anywhere-dsh-bridge-next-2.1.0-desktop.c58d98da25a23.r265798fa.tgz",

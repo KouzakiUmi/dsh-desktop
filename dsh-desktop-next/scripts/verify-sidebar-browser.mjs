@@ -38,7 +38,11 @@ async function verify() {
     const guests = new DesktopBrowserGuests(() => [`http://127.0.0.1:${server.address().port + 1}`])
     window = new BrowserWindow({ show: false,
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: true } })
-    guests.bind(window)
+    const attachedInputs = new Set()
+    guests.bind(window, (_guest, lease) => {
+      attachedInputs.add(lease)
+      return () => { attachedInputs.delete(lease) }
+    })
     await window.webContents.session.cookies.set({ url: origin, name: 'app-secret', value: 'app-only' })
     await window.loadURL(`${origin}/embed`)
     assert.equal(await window.webContents.executeJavaScript("document.querySelector('iframe').contentDocument?.querySelector('#native-proof')?.textContent ?? null"), null,
@@ -48,7 +52,7 @@ async function verify() {
     const attached = new Promise(resolve => { window.webContents.once('did-attach-webview', (_event, guest) => resolve(guest)) })
     await mountGuest(window, first)
     const contents = await attached
-    await wait(() => contents.getURL().startsWith('about:blank#'))
+    await wait(() => contents.getURL().startsWith('about:blank#') && attachedInputs.has(first.lease))
     assert.equal(contents.getLastWebPreferences().webSecurity, true)
     assert.equal(contents.getLastWebPreferences().sandbox, true)
     assert.equal(contents.getLastWebPreferences().nodeIntegration, false)
@@ -90,6 +94,7 @@ async function verify() {
     await guests.release(window.webContents, first.lease)
     await destroyed
     assert.equal(contents.isDestroyed(), true)
+    assert.equal(attachedInputs.has(first.lease), false, 'Guest release disposes its input binding')
     console.log('Native sidebar Browser passed: lease-gated attachment, forged leases refused, fixed guest preferences, partitioned storage, top-level load of an anti-framing page, native history and release teardown.')
   } catch (error) {
     code = 1; console.error(error)

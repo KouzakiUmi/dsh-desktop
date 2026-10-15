@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { afterEach, expect, it, vi } from 'vitest'
 import { runNextPackagingCommand } from '../scripts/packaging-command.ts'
 
@@ -21,6 +22,11 @@ it('forwards the Windows package gate verbatim and aborts packaging when it fail
   spawn.mockReset().mockReturnValue({ ...succeeded, status: 1 })
   expect(() => runNextPackagingCommand('cmd.exe', args, 'C:\\workspace', env)).toThrow('Packaging command failed')
   expect(spawn).toHaveBeenCalledOnce()
+})
+
+it('builds the runtime community adapter before a standalone Windows package check', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  expect(manifest.scripts['check:win-package']).toBe('yarn workspace dsh-community-market build && yarn check')
 })
 
 it('surfaces a launcher failure instead of misreporting it as a packaging exit code', () => {
