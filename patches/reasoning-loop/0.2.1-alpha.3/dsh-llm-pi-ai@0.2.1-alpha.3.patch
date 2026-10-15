@@ -1,0 +1,445 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1051,6 +1051,7 @@
+ 	displayName: z.string(),
+ 	api: z.union(supportedProtocols()),
+ 	baseURL: z.string(),
++	reasoningReplay: z.union(["native", "plain"]),
+ 	models: z.array(modelProfile),
+ 	modelOverrides: z.dict(modelOverride),
+ 	compat: compatProfile,
+@@ -1150,6 +1151,7 @@
+ 				defaultContextWindow: source.defaultContextWindow ?? 262144,
+ 				defaultMaxTokens: source.defaultMaxTokens ?? 32768
+ 			}, validation);
++			if (source.reasoningReplay === "plain" && catalog.models.some((model) => model.api !== "openai-completions")) throw new Error(`llm-pi-ai: provider "${provider}" plain reasoningReplay requires every model to use openai-completions`);
+ 			catalogError = catalog.modelErrors.values().next().value;
+ 			piProvider = buildProvider({
+ 				provider,
+@@ -1420,6 +1422,54 @@
+ 	return piContext(split.systemPrompt, options, messages);
+ }
+ //#endregion
++//#region lib/types/plain-reasoning.js
++/** Explicit plain-reasoning replay for the verified Chat Completions conversion path. */
++/**
++* Reject opaque metadata before an explicitly plain route can persist or replay it.
++* The three permitted strings are upstream Chat Completions field selectors,
++* not provider signatures. Empty, encrypted, structured, and tool signatures
++* cannot be silently removed to make an incompatible response look editable.
++* @param message - native response or reconstructed native assistant history.
++*/
++function assertPlainReasoning(message) {
++	for (const block of message.content) if (block.type === "thinking") {
++		const marker = block.thinkingSignature;
++		if (block.redacted || marker !== void 0 && marker !== "reasoning_content" && marker !== "reasoning" && marker !== "reasoning_text") throw new LlmError("Plain reasoning mode received opaque thinking replay metadata", "INCOMPATIBLE_REASONING_REPLAY");
++	} else if (block.type === "toolCall" && block.thoughtSignature !== void 0 || block.type === "text" && block.textSignature !== void 0) throw new LlmError("Plain reasoning mode received signed text or tool replay metadata", "INCOMPATIBLE_REASONING_REPLAY");
++}
++/**
++* Reconstruct same-route plain history without the implicit foreign-history fallback.
++* Reasoning-only prefixes become assistant text containing exactly those reasoning
++* bytes: upstream Chat Completions otherwise drops a message with no body or tools.
++* Normal responses with text/tools retain their original reasoning-field selector.
++* @param native - history reconstructed from durable content and validated replay metadata.
++* @param target - exact snapshot-bound Chat Completions model.
++* @returns native assistant history with no opaque signatures.
++*/
++function plainAssistant(native, target) {
++	if (target.api !== "openai-completions") throw new LlmError("Plain reasoning mode requires Chat Completions", "UNSUPPORTED_REASONING_REPLAY");
++	assertPlainReasoning(native);
++	if (native.provider !== target.provider || native.model !== target.id) return native;
++	const bodyOrTools = native.content.some((block) => block.type === "toolCall" || block.type === "text" && block.text.trim().length > 0);
++	return {
++		...native,
++		api: target.api,
++		provider: target.provider,
++		model: target.id,
++		content: native.content.map((block) => {
++			if (block.type !== "thinking") return block;
++			if (!bodyOrTools) return {
++				type: "text",
++				text: block.thinking
++			};
++			return {
++				...block,
++				thinkingSignature: block.thinkingSignature ?? "reasoning_content"
++			};
++		})
++	};
++}
++//#endregion
+ //#region lib/types/stream.js
+ /**
+ * pi-ai assistant event translation into the Harness streaming protocol.
+@@ -1531,123 +1581,130 @@
+ * @param callerSignal - caller cancellation state; an aborted caller makes any
+ *   in-band terminal error an aborted finish.
+ * @param requestedModel - request model identity recorded for durable replay.
++* @param plainReasoning - explicit mode rejecting opaque replay metadata; omitted preserves native replay.
+ * @returns the harness chunks, ending with `usage` then `finish`; throws
+ *   `LlmError` (`STREAM_CLOSED`) if the source ends without a terminal event.
+ */
+-async function* toStreamChunks(events, contextWindow, callerSignal, requestedModel) {
++async function* toStreamChunks(events, contextWindow, callerSignal, requestedModel, plainReasoning = false) {
+ 	const toolIds = /* @__PURE__ */ new Map();
+-	for await (const event of events) switch (event.type) {
+-		case "start": break;
+-		case "text_start":
+-			yield {
+-				type: "block-start",
+-				index: event.contentIndex,
+-				blockType: "text"
+-			};
+-			break;
+-		case "text_delta":
+-			yield {
+-				type: "text-delta",
+-				index: event.contentIndex,
+-				text: event.delta
+-			};
+-			break;
+-		case "text_end":
+-			yield {
+-				type: "block-end",
+-				index: event.contentIndex,
+-				block: {
+-					type: "text",
+-					text: event.content
+-				}
+-			};
+-			break;
+-		case "thinking_start":
+-			yield {
+-				type: "block-start",
+-				index: event.contentIndex,
+-				blockType: "reasoning"
+-			};
+-			break;
+-		case "thinking_delta":
+-			yield {
+-				type: "reasoning-delta",
+-				index: event.contentIndex,
+-				text: event.delta
+-			};
+-			break;
+-		case "thinking_end":
+-			yield {
+-				type: "block-end",
+-				index: event.contentIndex,
+-				block: {
+-					type: "reasoning",
+-					text: event.content
+-				}
+-			};
+-			break;
+-		case "toolcall_start": {
+-			const partial = event.partial.content[event.contentIndex];
+-			const id = partial?.type === "toolCall" ? partial.id : "";
+-			const name = partial?.type === "toolCall" ? partial.name : "";
+-			toolIds.set(event.contentIndex, {
+-				id,
+-				name
+-			});
+-			yield {
+-				type: "block-start",
+-				index: event.contentIndex,
+-				blockType: "tool-call"
+-			};
+-			break;
++	for await (const event of events) {
++		if (plainReasoning) {
++			if ("partial" in event) assertPlainReasoning(event.partial);
++			if (event.type === "done") assertPlainReasoning(event.message);
+ 		}
+-		case "toolcall_delta": {
+-			const known = toolIds.get(event.contentIndex);
+-			yield {
+-				type: "tool-call-delta",
+-				index: event.contentIndex,
+-				id: brandString(known?.id ?? ""),
+-				...known?.name !== void 0 && known.name.length > 0 ? { name: known.name } : {},
+-				argumentsDelta: event.delta
+-			};
+-			break;
++		switch (event.type) {
++			case "start": break;
++			case "text_start":
++				yield {
++					type: "block-start",
++					index: event.contentIndex,
++					blockType: "text"
++				};
++				break;
++			case "text_delta":
++				yield {
++					type: "text-delta",
++					index: event.contentIndex,
++					text: event.delta
++				};
++				break;
++			case "text_end":
++				yield {
++					type: "block-end",
++					index: event.contentIndex,
++					block: {
++						type: "text",
++						text: event.content
++					}
++				};
++				break;
++			case "thinking_start":
++				yield {
++					type: "block-start",
++					index: event.contentIndex,
++					blockType: "reasoning"
++				};
++				break;
++			case "thinking_delta":
++				yield {
++					type: "reasoning-delta",
++					index: event.contentIndex,
++					text: event.delta
++				};
++				break;
++			case "thinking_end":
++				yield {
++					type: "block-end",
++					index: event.contentIndex,
++					block: {
++						type: "reasoning",
++						text: event.content
++					}
++				};
++				break;
++			case "toolcall_start": {
++				const partial = event.partial.content[event.contentIndex];
++				const id = partial?.type === "toolCall" ? partial.id : "";
++				const name = partial?.type === "toolCall" ? partial.name : "";
++				toolIds.set(event.contentIndex, {
++					id,
++					name
++				});
++				yield {
++					type: "block-start",
++					index: event.contentIndex,
++					blockType: "tool-call"
++				};
++				break;
++			}
++			case "toolcall_delta": {
++				const known = toolIds.get(event.contentIndex);
++				yield {
++					type: "tool-call-delta",
++					index: event.contentIndex,
++					id: brandString(known?.id ?? ""),
++					...known?.name !== void 0 && known.name.length > 0 ? { name: known.name } : {},
++					argumentsDelta: event.delta
++				};
++				break;
++			}
++			case "toolcall_end":
++				yield {
++					type: "block-end",
++					index: event.contentIndex,
++					block: {
++						type: "tool-call",
++						id: brandString(event.toolCall.id),
++						name: event.toolCall.name,
++						arguments: JSON.stringify(event.toolCall.arguments)
++					}
++				};
++				break;
++			case "done":
++				yield {
++					type: "usage",
++					usage: mapUsage(event.message.usage)
++				};
++				yield {
++					type: "finish",
++					reason: mapStopReason(event.message, contextWindow),
++					replayState: toPiReplayState(event.message, requestedModel)
++				};
++				return;
++			case "error":
++				yield {
++					type: "usage",
++					usage: mapUsage(event.error.usage)
++				};
++				yield {
++					type: "finish",
++					reason: mapStopReason(callerSignal?.aborted ? {
++						...event.error,
++						stopReason: "aborted"
++					} : event.error, contextWindow)
++				};
++				return;
+ 		}
+-		case "toolcall_end":
+-			yield {
+-				type: "block-end",
+-				index: event.contentIndex,
+-				block: {
+-					type: "tool-call",
+-					id: brandString(event.toolCall.id),
+-					name: event.toolCall.name,
+-					arguments: JSON.stringify(event.toolCall.arguments)
+-				}
+-			};
+-			break;
+-		case "done":
+-			yield {
+-				type: "usage",
+-				usage: mapUsage(event.message.usage)
+-			};
+-			yield {
+-				type: "finish",
+-				reason: mapStopReason(event.message, contextWindow),
+-				replayState: toPiReplayState(event.message, requestedModel)
+-			};
+-			return;
+-		case "error":
+-			yield {
+-				type: "usage",
+-				usage: mapUsage(event.error.usage)
+-			};
+-			yield {
+-				type: "finish",
+-				reason: mapStopReason(callerSignal?.aborted ? {
+-					...event.error,
+-					stopReason: "aborted"
+-				} : event.error, contextWindow)
+-			};
+-			return;
+ 	}
+ 	throw new LlmError("pi-ai event stream ended without done/error", "STREAM_CLOSED");
+ }
+@@ -1921,6 +1978,7 @@
+ 			context: { contextWindow: resolvedModel.contextWindow },
+ 			...configuredMaxTokens === void 0 ? {} : { defaultMaxTokens: configuredMaxTokens },
+ 			...reasoningInfo(resolvedModel, defaultLevel),
++			...profile.reasoningReplay === "plain" ? { reasoningReplay: "editable-plain" } : {},
+ 			...conversationUpdates(resolvedModel)
+ 		};
+ 	}
+@@ -1962,6 +2020,7 @@
+ 				const attachments = containsImage ? this.config.resolveAttachments?.() : void 0;
+ 				if (containsImage && attachments === void 0) throw new LlmError("pi-ai image input requires the durable attachment service", "UNSUPPORTED_CONTENT");
+ 				const onReplayDegrade = (reason) => {
++					if (profile.reasoningReplay === "plain") throw new LlmError("Plain reasoning mode cannot degrade unusable replay metadata", "INVALID_REPLAY_STATE");
+ 					this.config.onReplayDegrade?.({
+ 						provider: options.provider,
+ 						model: options.model,
+@@ -1980,14 +2039,18 @@
+ 						maxBytes: profile.requestImageMaxBytes
+ 					}
+ 				}, onReplayDegrade);
+-				const iterator = toStreamChunks(snapshot.models.streamSimple(model, context, {
++				const projectedContext = profile.reasoningReplay === "plain" ? {
++					...context,
++					messages: context.messages.map((message) => message.role === "assistant" ? plainAssistant(message, model) : message)
++				} : context;
++				const iterator = toStreamChunks(snapshot.models.streamSimple(model, projectedContext, {
+ 					...profileOptions(profile, reasoning, apiKey),
+ 					...options.temperature === void 0 ? {} : { temperature: options.temperature },
+ 					...options.maxTokens === void 0 ? {} : { maxTokens: options.maxTokens },
+ 					...options.sessionId === void 0 ? {} : { sessionId: String(options.sessionId) },
+ 					signal: watchdog.signal,
+ 					headers: requestHeaders(profile.headers)
+-				}), model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]();
++				}), model.contextWindow, options.signal, model.id, profile.reasoningReplay === "plain")[Symbol.asyncIterator]();
+ 				let exhausted = false;
+ 				try {
+ 					while (true) {
+
+diff --git a/lib/types/config.d.ts b/lib/types/config.d.ts
+--- a/lib/types/config.d.ts
++++ b/lib/types/config.d.ts
+@@ -65,6 +65,11 @@
+     /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
+     baseURL?: string;
+     /**
++     * Explicit plain Chat Completions replay with opaque-metadata rejection.
++     * Omission/native preserves provider replay and advertises no edit capability.
++     */
++    reasoningReplay?: 'native' | 'plain';
++    /**
+      * This route's model catalog. Omission serves the installed catalog for the
+      * route unchanged; an explicit list replaces it, each entry defaulting its
+      * unset fields from the installed model of the same id.
+@@ -197,6 +202,7 @@
+         displayName?: string | null;
+         api?: string | null;
+         baseURL?: string | null;
++        reasoningReplay?: "plain" | "native" | null;
+         models?: PiAiModelProfile[] | null;
+         modelOverrides?: import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string> | null;
+         compat?: PiAiCompatProfile | null;
+@@ -225,6 +231,7 @@
+         displayName: z<string, string, "plain">;
+         api: z<string, string, "plain">;
+         baseURL: z<string, string, "plain">;
++        reasoningReplay: z<"plain" | "native", "plain" | "native", "plain">;
+         models: z<PiAiModelProfile[], PiAiModelProfile[], "plain">;
+         modelOverrides: z<import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, "plain">;
+         compat: z<PiAiCompatProfile>;
+@@ -260,6 +267,7 @@
+         displayName?: string | null;
+         api?: string | null;
+         baseURL?: string | null;
++        reasoningReplay?: "plain" | "native" | null;
+         models?: PiAiModelProfile[] | null;
+         modelOverrides?: import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string> | null;
+         compat?: PiAiCompatProfile | null;
+@@ -288,6 +296,7 @@
+         displayName: z<string, string, "plain">;
+         api: z<string, string, "plain">;
+         baseURL: z<string, string, "plain">;
++        reasoningReplay: z<"plain" | "native", "plain" | "native", "plain">;
+         models: z<PiAiModelProfile[], PiAiModelProfile[], "plain">;
+         modelOverrides: z<import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, "plain">;
+         compat: z<PiAiCompatProfile>;
+
+diff --git a/lib/types/plain-reasoning.d.ts b/lib/types/plain-reasoning.d.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/types/plain-reasoning.d.ts
+@@ -0,0 +1,21 @@
++/** Explicit plain-reasoning replay for the verified Chat Completions conversion path. */
++import type { AssistantMessage, Api, Model } from '@earendil-works/pi-ai';
++/**
++ * Reject opaque metadata before an explicitly plain route can persist or replay it.
++ * The three permitted strings are upstream Chat Completions field selectors,
++ * not provider signatures. Empty, encrypted, structured, and tool signatures
++ * cannot be silently removed to make an incompatible response look editable.
++ * @param message - native response or reconstructed native assistant history.
++ */
++export declare function assertPlainReasoning(message: AssistantMessage): void;
++/**
++ * Reconstruct same-route plain history without the implicit foreign-history fallback.
++ * Reasoning-only prefixes become assistant text containing exactly those reasoning
++ * bytes: upstream Chat Completions otherwise drops a message with no body or tools.
++ * Normal responses with text/tools retain their original reasoning-field selector.
++ * @param native - history reconstructed from durable content and validated replay metadata.
++ * @param target - exact snapshot-bound Chat Completions model.
++ * @returns native assistant history with no opaque signatures.
++ */
++export declare function plainAssistant(native: AssistantMessage, target: Model<Api>): AssistantMessage;
++//# sourceMappingURL=plain-reasoning.d.ts.map
+\ No newline at end of file
+
+diff --git a/lib/types/stream.d.ts b/lib/types/stream.d.ts
+--- a/lib/types/stream.d.ts
++++ b/lib/types/stream.d.ts
+@@ -36,8 +36,9 @@
+  * @param callerSignal - caller cancellation state; an aborted caller makes any
+  *   in-band terminal error an aborted finish.
+  * @param requestedModel - request model identity recorded for durable replay.
++ * @param plainReasoning - explicit mode rejecting opaque replay metadata; omitted preserves native replay.
+  * @returns the harness chunks, ending with `usage` then `finish`; throws
+  *   `LlmError` (`STREAM_CLOSED`) if the source ends without a terminal event.
+  */
+-export declare function toStreamChunks(events: AsyncIterable<AssistantMessageEvent>, contextWindow?: number, callerSignal?: AbortSignal, requestedModel?: string): AsyncGenerator<StreamChunk>;
++export declare function toStreamChunks(events: AsyncIterable<AssistantMessageEvent>, contextWindow?: number, callerSignal?: AbortSignal, requestedModel?: string, plainReasoning?: boolean): AsyncGenerator<StreamChunk>;
+ //# sourceMappingURL=stream.d.ts.map
+\ No newline at end of file

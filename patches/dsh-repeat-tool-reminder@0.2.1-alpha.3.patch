@@ -1,0 +1,566 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1805,6 +1805,8 @@
+ 			if (systemPromptUpdate !== void 0 && systemPromptUpdate !== "in-history") throw new LlmError(`adapter returned invalid system prompt update mode for provider "${provider}" model "${model}"`, "INVALID_MODEL_INFO");
+ 			const toolUpdate = resolved.toolUpdate;
+ 			if (toolUpdate !== void 0 && toolUpdate !== "in-history" && toolUpdate !== "addition-only") throw new LlmError(`adapter returned invalid tool update mode for provider "${provider}" model "${model}"`, "INVALID_MODEL_INFO");
++			const reasoningReplay = resolved.reasoningReplay;
++			if (reasoningReplay !== void 0 && reasoningReplay !== "editable-plain" && reasoningReplay !== "opaque") throw new LlmError(`adapter returned invalid reasoning replay capability for provider "${provider}" model "${model}"`, "INVALID_MODEL_INFO");
+ 			const defaultMaxTokens = resolved.defaultMaxTokens;
+ 			if (defaultMaxTokens !== void 0 && (!Number.isSafeInteger(defaultMaxTokens) || defaultMaxTokens <= 0)) throw new LlmError(`adapter returned invalid default maxTokens for provider "${provider}" model "${model}"`, "INVALID_MODEL_MAX_TOKENS");
+ 			const info = {
+@@ -1816,7 +1818,8 @@
+ 				...context === void 0 ? {} : { context: { contextWindow: context.contextWindow } },
+ 				...defaultMaxTokens === void 0 ? {} : { defaultMaxTokens },
+ 				...resolved.systemPromptUpdate === void 0 ? {} : { systemPromptUpdate: resolved.systemPromptUpdate },
+-				...resolved.toolUpdate === void 0 ? {} : { toolUpdate: resolved.toolUpdate }
++				...resolved.toolUpdate === void 0 ? {} : { toolUpdate: resolved.toolUpdate },
++				...resolved.reasoningReplay === void 0 ? {} : { reasoningReplay: resolved.reasoningReplay }
+ 			};
+ 			const reasoning = resolved.reasoning;
+ 			if (reasoning === void 0) return info;
+@@ -1925,6 +1928,7 @@
+ 				...modelInfo.inputModalities === void 0 ? {} : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
+ 				...modelInfo.systemPromptUpdate === void 0 ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
+ 				...modelInfo.toolUpdate === void 0 ? {} : { toolUpdate: modelInfo.toolUpdate },
++				...modelInfo.reasoningReplay === void 0 ? {} : { reasoningReplay: modelInfo.reasoningReplay },
+ 				stream: (options) => {
+ 					if (dispatched) throw new LlmError("a prepared LLM call can only be dispatched once", "INVALID_PREPARED_CALL");
+ 					if (!callConfigEquals(options, resolvedConfig)) throw new LlmError("prepared LLM call config changed before adapter dispatch", "INVALID_PREPARED_CALL");
+@@ -2105,16 +2109,353 @@
+ 	};
+ }
+ //#endregion
++//#region lib/types/reasoning-watch.js
++/** Bounded exact-copy evidence and tentative buffering for streamed reasoning. */
++/**
++* Validate the complete resolved settings before installing a policy.
++* @param config - deployment-selected complete budgets.
++* @throws when a count is invalid or the buffering/confirmation bounds conflict.
++*/
++function validateReasoningWatchConfig(config) {
++	for (const key of [
++		"windowChars",
++		"scanChars",
++		"holdChars",
++		"confirmChars",
++		"cancelChars",
++		"recoveryChars",
++		"maxPeriodChars",
++		"minPoolUnits"
++	]) if (!Number.isSafeInteger(config[key]) || config[key] < 1) throw new Error(`reasoningLoop.${key} must be a positive safe integer`);
++	if (config.scanChars > config.holdChars || config.holdChars >= config.confirmChars || config.confirmChars > config.windowChars || config.recoveryChars > config.windowChars || config.maxPeriodChars * 3 > config.windowChars || config.cancelChars <= config.confirmChars || config.minPoolUnits < 3 || !Number.isFinite(config.poolShare) || config.poolShare <= .5 || config.poolShare > 1) throw new Error("reasoningLoop requires scan <= hold < confirm <= window, recovery <= window, 3 * period <= window, cancel > confirm, pool units >= 3, and 0.5 < poolShare <= 1");
++}
++/**
++* Conservatively suppress exact copies only after sustained repetition evidence.
++* Normal text is accepted immediately. Raw and accepted suffixes, pending text,
++* and pending span metadata are bounded by the configured window. This is not a
++* semantic classifier: changed identifiers, numbers, and negations remain new text.
++*/
++var ReasoningWatch = class {
++	config;
++	raw = "";
++	accepted = "";
++	offset = 0;
++	pending = [];
++	pendingChars = 0;
++	phase = "normal";
++	protected = false;
++	stopped = false;
++	omitted = 0;
++	constructor(config) {
++		this.config = config;
++	}
++	/** Number of confirmed copy characters omitted so far. */
++	get suppressedChars() {
++		return this.omitted;
++	}
++	/** Retained character count, excluding output returned to the caller. */
++	get retainedChars() {
++		return this.raw.length + this.accepted.length + this.pendingChars;
++	}
++	/**
++	* Disable repetition-driven cancellation after a complete protocol tool block.
++	* Filtering remains active; the caller must independently bound unfinished tool settlement.
++	*/
++	protectCommit() {
++		this.protected = true;
++	}
++	/**
++	* Consume one delta; internal observation positions do not depend on delta sizes.
++	* @param text - the original reasoning delta, without normalization.
++	* @returns accepted text and whether the local suppression budget was exhausted.
++	*/
++	push(text) {
++		let emitted = "";
++		for (let position = 0; position < text.length && !this.stopped; position += 1) {
++			const char = text.charAt(position);
++			const start = this.offset++;
++			this.raw = (this.raw + char).slice(-this.config.windowChars);
++			if (this.phase === "normal") {
++				emitted += char;
++				this.remember(char);
++			} else {
++				const previous = this.pending.at(-1);
++				if (previous !== void 0 && previous.start + previous.text.length === start) previous.text += char;
++				else this.pending.push({
++					start,
++					text: char
++				});
++				this.pendingChars += 1;
++			}
++			if (this.pendingChars >= this.config.windowChars && this.offset % this.config.scanChars !== 0) {
++				emitted += this.flush();
++				this.phase = "normal";
++			}
++			if (this.offset % this.config.scanChars !== 0) continue;
++			const evidence = this.evidence();
++			if (this.phase === "normal") {
++				if (evidence.extent >= this.config.holdChars) this.phase = "tentative";
++				continue;
++			}
++			if (evidence.extent >= this.config.confirmChars) this.phase = "suppressing";
++			if (this.phase === "suppressing") {
++				this.suppress(evidence.copies);
++				if (!this.protected && this.omitted >= this.config.cancelChars && evidence.extent >= this.config.holdChars) {
++					this.stopped = true;
++					break;
++				}
++			}
++			if (this.phase === "suppressing" && this.pendingChars >= this.config.recoveryChars || evidence.extent < this.config.holdChars && this.pendingChars >= this.config.recoveryChars || this.pendingChars >= this.config.windowChars) {
++				emitted += this.flush();
++				this.phase = "normal";
++			}
++		}
++		return {
++			text: emitted,
++			interrupt: this.stopped
++		};
++	}
++	/**
++	* Release only unresolved text at an ordering barrier or final settlement.
++	* Confirmed copies have already been removed and can never be released.
++	* @returns pending original text in arrival order.
++	*/
++	flush() {
++		const text = this.pending.map((part) => part.text).join("");
++		this.pending = [];
++		this.pendingChars = 0;
++		this.remember(text);
++		return text;
++	}
++	remember(text) {
++		this.accepted = (this.accepted + text).slice(-this.config.windowChars);
++	}
++	evidence() {
++		const base = this.offset - this.raw.length;
++		const copies = [];
++		let extent = 0;
++		for (let period = 4; period <= this.config.maxPeriodChars && period * 3 <= this.raw.length; period += 1) {
++			const pattern = this.raw.slice(-period);
++			if (pattern.trim().length < 2 || new Set(pattern).size < 2) continue;
++			let matched = period;
++			while (matched < this.raw.length && this.raw[this.raw.length - matched - 1] === this.raw[this.raw.length - matched - 1 + period]) matched += 1;
++			if (matched < period * 3) continue;
++			extent = Math.max(extent, matched);
++			if (this.accepted.includes(pattern)) copies.push({
++				start: this.offset - matched + period,
++				end: this.offset
++			});
++		}
++		const units = [...this.raw.matchAll(/[^。！？!?；;\r\n]+[。！？!?；;\r\n]+/gu)];
++		if (units.length >= this.config.minPoolUnits) {
++			const counts = /* @__PURE__ */ new Map();
++			let total = 0;
++			for (const unit of units) {
++				counts.set(unit[0], (counts.get(unit[0]) ?? 0) + 1);
++				total += unit[0].length;
++			}
++			let repeated = 0;
++			const pooled = [];
++			for (const unit of units) {
++				const count = counts.get(unit[0]);
++				if (count === void 0 || count < 2) continue;
++				repeated += unit[0].length;
++				if (this.accepted.includes(unit[0])) pooled.push({
++					start: base + unit.index,
++					end: base + unit.index + unit[0].length
++				});
++			}
++			if (repeated / total >= this.config.poolShare) {
++				extent = Math.max(extent, repeated);
++				copies.push(...pooled);
++			}
++		}
++		return {
++			extent,
++			copies
++		};
++	}
++	suppress(copies) {
++		copies.sort((a, b) => a.start - b.start || a.end - b.end);
++		const merged = [];
++		for (const copy of copies) {
++			const previous = merged.at(-1);
++			if (previous !== void 0 && copy.start <= previous.end) previous.end = Math.max(previous.end, copy.end);
++			else merged.push({ ...copy });
++		}
++		const remaining = [];
++		for (const part of this.pending) {
++			let position = part.start;
++			const end = position + part.text.length;
++			for (const copy of merged) {
++				if (copy.end <= position) continue;
++				if (copy.start >= end) break;
++				if (copy.start > position) remaining.push({
++					start: position,
++					text: part.text.slice(position - part.start, copy.start - part.start)
++				});
++				const removedEnd = Math.min(end, copy.end);
++				this.omitted += removedEnd - Math.max(position, copy.start);
++				position = removedEnd;
++				if (position === end) break;
++			}
++			if (position < end) remaining.push({
++				start: position,
++				text: part.text.slice(position - part.start)
++			});
++		}
++		this.pending = remaining;
++		this.pendingChars = remaining.reduce((sum, part) => sum + part.text.length, 0);
++	}
++};
++//#endregion
++//#region lib/types/reasoning-policy.js
++/** Optional reasoning-copy policy, independent of advisory tool-call reminders. */
++/** Validated settings; omission at the owning plugin disables this policy entirely. */
++const ReasoningLoopConfig = z.object({
++	windowChars: z.number().default(4096),
++	scanChars: z.number().default(32),
++	holdChars: z.number().default(256),
++	confirmChars: z.number().default(1024),
++	cancelChars: z.number().default(16384),
++	recoveryChars: z.number().default(256),
++	maxPeriodChars: z.number().default(192),
++	minPoolUnits: z.number().default(16),
++	poolShare: z.number().default(.75),
++	maxRecoveries: z.number().default(1),
++	settlementBudget: z.number().default(65536)
++});
++const RECOVERY_PROMPT = "The preceding reasoning was interrupted after sustained repetition. Its retained prefix is available above; repeated copies were discarded. Continue the unfinished task using a different approach. Do not repeat that reasoning. Use the actual tool protocol when an action is needed.";
++/**
++* Filter one reasoning block without retaining another complete copy of its text.
++* Interleaved non-reasoning events release unresolved text before passing through.
++* Additional reasoning indexes are observed unchanged; the first remains protected
++* against a full block-end restoring any copies already suppressed.
++*/
++var ReasoningOutputPolicy = class {
++	interrupt;
++	watch;
++	index;
++	closed = false;
++	localInterruption;
++	settlementLeft;
++	settlementBudget;
++	constructor(config, interrupt) {
++		this.interrupt = interrupt;
++		this.watch = new ReasoningWatch(config);
++		this.settlementBudget = config.settlementBudget;
++	}
++	get interruption() {
++		return this.localInterruption;
++	}
++	push(chunk) {
++		if (this.settlementLeft !== void 0 && chunk.type !== "finish") {
++			const cost = 1 + (chunk.type === "reasoning-delta" || chunk.type === "text-delta" ? chunk.text.length : chunk.type === "tool-call-delta" ? chunk.argumentsDelta.length : 0);
++			if (cost > this.settlementLeft) {
++				this.localInterruption = this.interrupt("settlement-limit");
++				return this.flush();
++			}
++			this.settlementLeft -= cost;
++		}
++		if (chunk.type === "reasoning-delta") {
++			if (this.index === void 0) this.index = chunk.index;
++			if (chunk.index !== this.index || this.closed) return [...this.flush(), chunk];
++			const result = this.watch.push(chunk.text);
++			const items = result.text.length === 0 ? [] : [{
++				...chunk,
++				text: result.text
++			}];
++			if (result.interrupt) {
++				items.push(...this.flush());
++				this.localInterruption = this.interrupt("repetition");
++			}
++			return items;
++		}
++		const items = [...this.flush()];
++		if (chunk.type === "block-end" && chunk.block.type === "reasoning" && chunk.index === this.index) {
++			this.closed = true;
++			items.push({
++				type: "accepted-reasoning-end",
++				index: chunk.index
++			});
++		} else {
++			if (chunk.type === "block-end" && chunk.block.type === "tool-call" && chunk.block.id.length > 0 && chunk.block.name.length > 0) {
++				this.watch.protectCommit();
++				this.settlementLeft ??= this.settlementBudget;
++			}
++			items.push(chunk);
++		}
++		return items;
++	}
++	flush() {
++		const text = this.watch.flush();
++		return text.length === 0 || this.index === void 0 ? [] : [{
++			type: "reasoning-delta",
++			index: this.index,
++			text
++		}];
++	}
++};
++/**
++* Register the optional per-call policy; all listeners and recovery state belong to this fiber.
++* @param ctx - plugin scope, also limiting which Agents receive the policy.
++* @param config - complete resolved settings, validated before registration.
++*/
++function installReasoningPolicy(ctx, config) {
++	validateReasoningWatchConfig(config);
++	if (!Number.isSafeInteger(config.maxRecoveries) || config.maxRecoveries < 0) throw new Error("reasoningLoop.maxRecoveries must be a non-negative safe integer");
++	if (!Number.isSafeInteger(config.settlementBudget) || config.settlementBudget < 1) throw new Error("reasoningLoop.settlementBudget must be a positive safe integer");
++	const recoveries = /* @__PURE__ */ new WeakMap();
++	let active = true;
++	ctx.effect(() => () => {
++		active = false;
++	});
++	ctx.on("agent/output-policy", (call, next) => {
++		const downstream = next();
++		if (call.preparedCall?.reasoningReplay !== "editable-plain") return downstream;
++		if (downstream !== void 0) throw new Error("only one assistant output policy may own a model call");
++		return new ReasoningOutputPolicy(config, (reason) => {
++			if (reason === "settlement-limit") return { failure: {
++				code: "TOOL_SETTLEMENT_LIMIT",
++				message: "Output after a tool call exceeded the local settlement budget before finishing. No tools from this call were dispatched."
++			} };
++			const previous = recoveries.get(call.agent);
++			const count = previous?.turn === call.turn ? previous.count : 0;
++			recoveries.set(call.agent, {
++				turn: call.turn,
++				count: count + 1
++			});
++			const continuation = !active || count >= config.maxRecoveries ? void 0 : createUserMessage({
++				content: [{
++					type: "text",
++					text: RECOVERY_PROMPT
++				}],
++				source: { kind: "reasoning-loop-recovery" }
++			});
++			return {
++				failure: {
++					code: "REASONING_LOOP",
++					message: "Reasoning output was interrupted after sustained exact-copy repetition."
++				},
++				get continuation() {
++					return active ? continuation : void 0;
++				}
++			};
++		});
++	});
++}
++//#endregion
+ //#region lib/types/index.js
+ /**
+-* Advisory per-agent repeat-call detector. It enriches post-execute decisions
+-* with logged model context without vetoing or rewriting calls. Configuration
+-* and chain semantics live in the package README; rationale lives in the
+-* repeat-tool-reminder Agent Note.
++* Advisory per-agent repeat-call detector with independent opt-in reasoning
++* suppression. Tool reminders enrich post-execute decisions without vetoing
++* calls; output editing requires the adapter's explicit plain-replay capability.
++* Configuration and limits live in the package README.
+ * @module @deepseek-ai/dsh-repeat-tool-reminder
+ */
+ const name = "repeat-tool-reminder";
+ const Config = z.object({
++	reasoningLoop: z.union([z.const(false), ReasoningLoopConfig]),
+ 	thresholds: z.array(z.number()).default([
+ 		3,
+ 		5,
+@@ -2200,6 +2541,7 @@
+ * @param config - validated {@link Config}; `thresholds` is re-checked fail-loud here.
+ */
+ function apply(ctx, config) {
++	if (config.reasoningLoop !== void 0 && config.reasoningLoop !== false) installReasoningPolicy(ctx, config.reasoningLoop);
+ 	const thresholds = validateThresholds(config.thresholds);
+ 	const thresholdSet = new Set(thresholds);
+ 	const includePatterns = config.include.map(wildcardToRegExp);
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -1,13 +1,14 @@
+ /**
+- * Advisory per-agent repeat-call detector. It enriches post-execute decisions
+- * with logged model context without vetoing or rewriting calls. Configuration
+- * and chain semantics live in the package README; rationale lives in the
+- * repeat-tool-reminder Agent Note.
++ * Advisory per-agent repeat-call detector with independent opt-in reasoning
++ * suppression. Tool reminders enrich post-execute decisions without vetoing
++ * calls; output editing requires the adapter's explicit plain-replay capability.
++ * Configuration and limits live in the package README.
+  * @module @deepseek-ai/dsh-repeat-tool-reminder
+  */
+ import type { Context } from '@deepseek-ai/cordis';
+ import z from '@deepseek-ai/schemastery';
+ import type { ContextFormed } from '@deepseek-ai/dsh-llm';
++import { ReasoningLoopConfig } from './reasoning-policy.ts';
+ declare module '@deepseek-ai/dsh-llm' {
+     interface MessageSourceMap {
+         'repeat-tool-reminder': {
+@@ -26,6 +27,8 @@
+  * (`exclude: [mcp_*]` must stay legal in a deployment that loads no MCP tools).
+  */
+ export interface Config {
++    /** Optional exact-copy suppression and bounded recovery for explicitly editable-plain reasoning; omitted disables output editing. */
++    reasoningLoop?: false | ReasoningLoopConfig;
+     /** Consecutive-repeat counts that trigger a reminder (default `[3, 5, 8]`). */
+     thresholds?: number[];
+     /** Tool-name patterns to track; empty means every tool is tracked. */
+diff --git a/lib/types/reasoning-policy.d.ts b/lib/types/reasoning-policy.d.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/types/reasoning-policy.d.ts
+@@ -0,0 +1,48 @@
++/** Optional reasoning-copy policy, independent of advisory tool-call reminders. */
++import type { Context } from '@deepseek-ai/cordis';
++import z from '@deepseek-ai/schemastery';
++import type { AssistantOutputInterruption, AssistantOutputItem, AssistantOutputPolicy } from '@deepseek-ai/dsh-agent';
++import { type StreamChunk } from '@deepseek-ai/dsh-llm';
++import { type ReasoningWatchConfig } from './reasoning-watch.ts';
++declare module '@deepseek-ai/dsh-llm' {
++    interface MessageSourceMap {
++        'reasoning-loop-recovery': {
++            kind: 'reasoning-loop-recovery';
++        };
++    }
++}
++/** Explicit opt-in settings for editable-plain conversation-model output. */
++export interface ReasoningLoopConfig extends ReasoningWatchConfig {
++    /** Maximum locally interrupted calls resumed within one turn, including native child agents. */
++    maxRecoveries: number;
++    /** Post-tool settlement budget: each received event costs one plus its new delta's UTF-16 characters. */
++    settlementBudget: number;
++}
++/** Validated settings; omission at the owning plugin disables this policy entirely. */
++export declare const ReasoningLoopConfig: z<ReasoningLoopConfig>;
++/**
++ * Filter one reasoning block without retaining another complete copy of its text.
++ * Interleaved non-reasoning events release unresolved text before passing through.
++ * Additional reasoning indexes are observed unchanged; the first remains protected
++ * against a full block-end restoring any copies already suppressed.
++ */
++export declare class ReasoningOutputPolicy implements AssistantOutputPolicy {
++    private readonly interrupt;
++    private readonly watch;
++    private index;
++    private closed;
++    private localInterruption;
++    private settlementLeft;
++    private readonly settlementBudget;
++    constructor(config: ReasoningLoopConfig, interrupt: (reason: 'repetition' | 'settlement-limit') => AssistantOutputInterruption);
++    get interruption(): AssistantOutputInterruption | undefined;
++    push(chunk: StreamChunk): readonly AssistantOutputItem[];
++    flush(): readonly AssistantOutputItem[];
++}
++/**
++ * Register the optional per-call policy; all listeners and recovery state belong to this fiber.
++ * @param ctx - plugin scope, also limiting which Agents receive the policy.
++ * @param config - complete resolved settings, validated before registration.
++ */
++export declare function installReasoningPolicy(ctx: Context, config: ReasoningLoopConfig): void;
++//# sourceMappingURL=reasoning-policy.d.ts.map
+\ No newline at end of file
+diff --git a/lib/types/reasoning-watch.d.ts b/lib/types/reasoning-watch.d.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/types/reasoning-watch.d.ts
+@@ -0,0 +1,79 @@
++/** Bounded exact-copy evidence and tentative buffering for streamed reasoning. */
++/** Deployment-selected detection, buffering, and delayed interruption budgets, in UTF-16 characters. */
++export interface ReasoningWatchConfig {
++    /** Maximum raw and accepted suffix retained independently. */
++    windowChars: number;
++    /** Fixed internal observation cadence, independent of provider chunk boundaries. */
++    scanChars: number;
++    /** Minimum exact repeated extent before subsequent input becomes tentative. */
++    holdChars: number;
++    /** Minimum exact repeated extent before proven copies can be suppressed. */
++    confirmChars: number;
++    /** Cumulative suppressed extent before a still-looping call can be interrupted. */
++    cancelChars: number;
++    /** Unproven text retained before releasing a recovered suffix. */
++    recoveryChars: number;
++    /** Maximum period searched by the exact-cycle detector. */
++    maxPeriodChars: number;
++    /** Minimum complete sentence units for reordered-pool evidence. */
++    minPoolUnits: number;
++    /** Minimum fraction of unit characters belonging to repeated exact units. */
++    poolShare: number;
++}
++/** Accepted text and the local decision after consuming one provider delta. */
++export interface ReasoningWatchResult {
++    /** Accepted text, including any previously tentative text released by this observation. */
++    text: string;
++    /** Whether the suppression budget ended this call; no provider finish is fabricated. */
++    interrupt: boolean;
++}
++/**
++ * Validate the complete resolved settings before installing a policy.
++ * @param config - deployment-selected complete budgets.
++ * @throws when a count is invalid or the buffering/confirmation bounds conflict.
++ */
++export declare function validateReasoningWatchConfig(config: ReasoningWatchConfig): void;
++/**
++ * Conservatively suppress exact copies only after sustained repetition evidence.
++ * Normal text is accepted immediately. Raw and accepted suffixes, pending text,
++ * and pending span metadata are bounded by the configured window. This is not a
++ * semantic classifier: changed identifiers, numbers, and negations remain new text.
++ */
++export declare class ReasoningWatch {
++    private readonly config;
++    private raw;
++    private accepted;
++    private offset;
++    private pending;
++    private pendingChars;
++    private phase;
++    private protected;
++    private stopped;
++    private omitted;
++    constructor(config: ReasoningWatchConfig);
++    /** Number of confirmed copy characters omitted so far. */
++    get suppressedChars(): number;
++    /** Retained character count, excluding output returned to the caller. */
++    get retainedChars(): number;
++    /**
++     * Disable repetition-driven cancellation after a complete protocol tool block.
++     * Filtering remains active; the caller must independently bound unfinished tool settlement.
++     */
++    protectCommit(): void;
++    /**
++     * Consume one delta; internal observation positions do not depend on delta sizes.
++     * @param text - the original reasoning delta, without normalization.
++     * @returns accepted text and whether the local suppression budget was exhausted.
++     */
++    push(text: string): ReasoningWatchResult;
++    /**
++     * Release only unresolved text at an ordering barrier or final settlement.
++     * Confirmed copies have already been removed and can never be released.
++     * @returns pending original text in arrival order.
++     */
++    flush(): string;
++    private remember;
++    private evidence;
++    private suppress;
++}
++//# sourceMappingURL=reasoning-watch.d.ts.map
+\ No newline at end of file

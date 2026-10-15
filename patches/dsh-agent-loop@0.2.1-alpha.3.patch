@@ -1,0 +1,136 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -392,6 +392,17 @@
+ 			step: this.step
+ 		});
+ 	}
++	/**
++	* Commit one filtered item; reasoning closes use the same accepted text as live deltas.
++	* @param item - accepted provider chunk or canonical reasoning-close directive.
++	*/
++	accept(item) {
++		this.push(item.type === "accepted-reasoning-end" ? {
++			type: "block-end",
++			index: item.index,
++			block: this.assembler.acceptedReasoning(item.index)
++		} : item);
++	}
+ 	/** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
+ 	push(chunk) {
+ 		const timed = this.accumulator.push({
+@@ -1072,28 +1083,69 @@
+ 			} else this.session.append("user/message", message, { surfaceOp: "append" });
+ 			if (context !== void 0 && !contextAdmitted) this.session.append("user/message", context, { surfaceOp: "append" });
+ 			firstAttempt = false;
++			const outputPolicy = this.dispatch.waterfall("agent/output-policy", {
++				turn,
++				step,
++				preparedCall,
++				signal
++			}, () => void 0);
++			if (outputPolicy !== void 0 && preparedCall?.reasoningReplay !== "editable-plain") throw new LlmError("assistant output editing requires an explicit editable-plain adapter capability", "INVALID_OUTPUT_POLICY");
++			const callAbort = outputPolicy === void 0 ? void 0 : new AbortController();
++			const callSignal = callAbort === void 0 ? signal : AbortSignal.any([signal, callAbort.signal]);
+ 			const request = this.buildRequest(config, preparedCall, assembly.tools, {
+ 				turn,
+ 				step
+-			}, startsRequestSeries, signal);
++			}, startsRequestSeries, callSignal);
+ 			const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step, (frame) => {
+ 				this.dispatch.emit("agent/assistant-stream", { frame });
+ 			});
+ 			let started = false;
++			let localInterruption;
+ 			try {
+ 				const stream = preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request);
+ 				signal.throwIfAborted();
+ 				live.start();
+ 				started = true;
+-				for await (const chunk of stream) {
++				try {
++					for await (const chunk of stream) {
++						signal.throwIfAborted();
++						if (outputPolicy === void 0) live.push(chunk);
++						else {
++							for (const accepted of outputPolicy.push(chunk)) {
++								signal.throwIfAborted();
++								live.accept(accepted);
++							}
++							const decision = outputPolicy.interruption;
++							if (decision !== void 0) {
++								const failure = decision.failure;
++								const error = new LlmError(failure.message, failure.code, failure);
++								localInterruption = {
++									decision,
++									error
++								};
++								callAbort?.abort(error);
++								break;
++							}
++						}
++					}
++					if (localInterruption !== void 0) throw localInterruption.error;
++					for (const accepted of outputPolicy?.flush() ?? []) live.accept(accepted);
+ 					signal.throwIfAborted();
+-					live.push(chunk);
++				} finally {
++					callAbort?.abort(/* @__PURE__ */ new Error("assistant output call settled"));
+ 				}
+-				signal.throwIfAborted();
+ 			} catch (error) {
+ 				if (!started) throw error;
+ 				try {
+-					if (signal.aborted) {
++					for (const accepted of outputPolicy?.flush() ?? []) live.accept(accepted);
++					if (localInterruption !== void 0 && !signal.aborted) live.push({
++						type: "finish",
++						reason: {
++							kind: "error",
++							failure: localInterruption.decision.failure
++						}
++					});
++					if (signal.aborted || localInterruption !== void 0 && error === localInterruption.error) {
+ 						const content = live.interruptedBlocks();
+ 						if (content.length > 0) live.settle("assistant/message", () => this.session.append("assistant/message", {
+ 							turn,
+@@ -1123,6 +1175,16 @@
+ 				} catch (settlementError) {
+ 					throw new AggregateError([error, settlementError], "Assistant stream failed and its durable settlement was rejected", { cause: error });
+ 				}
++				if (localInterruption !== void 0) {
++					if (error !== localInterruption.error) throw new AggregateError([localInterruption.error, error], "Assistant output interruption cleanup failed", { cause: localInterruption.error });
++					signal.throwIfAborted();
++					const continuation = localInterruption.decision.continuation;
++					if (continuation !== void 0) {
++						this.session.append("user/message", continuation, { surfaceOp: "append" });
++						signal.throwIfAborted();
++						continue;
++					}
++				}
+ 				throw error;
+ 			}
+ 			try {
+diff --git a/lib/types/assistant-stream.d.ts b/lib/types/assistant-stream.d.ts
+--- a/lib/types/assistant-stream.d.ts
++++ b/lib/types/assistant-stream.d.ts
+@@ -1,6 +1,6 @@
+ /** Process-local assistant attempt framing and durable stream accumulation. */
+ import { LlmAttemptId, type ContentBlock, type FinishReason, type ReplayEnvelope, type StreamChunk, type TokenUsage } from '@deepseek-ai/dsh-llm';
+-import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
++import type { AssistantOutputItem, AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
+ import type { SessionEventMap, SessionId, SessionSeq } from '@deepseek-ai/dsh-session';
+ /** Folds one model attempt into one compact stream plus ordered transient frames. */
+ export declare class AssistantStreamAttempt {
+@@ -27,6 +27,11 @@
+     constructor(sessionId: SessionId, attempt: number, nextRevision: () => number, turn: number, step: number, emit: (frame: AssistantStreamFrame) => void);
+     /** Publish the opening marker before the first delivered chunk. */
+     start(): void;
++    /**
++     * Commit one filtered item; reasoning closes use the same accepted text as live deltas.
++     * @param item - accepted provider chunk or canonical reasoning-close directive.
++     */
++    accept(item: AssistantOutputItem): void;
+     /** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
+     push(chunk: StreamChunk): void;
+     /**

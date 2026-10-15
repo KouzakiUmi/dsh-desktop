@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "commit": "f43a201de78c2926820a6670bbb8b653a39b0308",
+    "version": "0.2.1-alpha.3"
+  },
+  "packages": [
+    {
+      "filename": "dsh-llm@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "beforeSha256": "d18d8ae4c8d961e628708c1e4698e09716a0ebb80e55a672e0bde1029bec1155",
+          "afterSha256": "0f20cad1ed38b2baf5e2a6f5cfa2a302af77a65b11bba7b823e05c8cc724a224"
+        },
+        {
+          "path": "lib/typert.host.js",
+          "beforeSha256": "22d86e67e013714b9b70eb119f85b825d73a52e30d6ebd5d7894dc4a2965076a",
+          "afterSha256": "4994467e4324a46448f9f841af5a5d98422451416a49ebcca7090581da9a33fc"
+        },
+        {
+          "path": "lib/typert.remote-client.js",
+          "beforeSha256": "fea6401fe00567f6f25bd58057e30167bb38a7c09f00dcd626116e1bc6c1fde6",
+          "afterSha256": "b74dda213de7407c50167535f7c886f50f500565e40dc20b4a379ba928a8790c"
+        },
+        {
+          "path": "lib/types/assembler.d.ts",
+          "beforeSha256": "c5eb8c0da60d6410daa171134014bf77cde759d1a7a914fe0ec63d800cc8034d",
+          "afterSha256": "a7458dbc460b8bcae9a917504b977da0a0c23d848090df618c38992124133533"
+        },
+        {
+          "path": "lib/types/assembler.js",
+          "beforeSha256": "35a4754ab854055942b9142934c595c3e6358a717947daa2d8d89847aef988f7",
+          "afterSha256": "bbdbb58842dd0391be0215c5acfe36926302cc12244ed87cca1404b4e541954f"
+        },
+        {
+          "path": "lib/types/index.d.ts",
+          "beforeSha256": "895a2d357b3da2d2ec18eada1271274d43169acaa6591d57bb6e84878e1b88fe",
+          "afterSha256": "8f6f9c0cb1cb9d3507fadffb20409d6cabb872bb2918c5f313043c20dbfbd793"
+        },
+        {
+          "path": "lib/types/index.js",
+          "beforeSha256": "03b16dc51a3e6712823d57afaf74a7663d628aefd05ae7768d2cea89d05f7197",
+          "afterSha256": "c1a7eede4e11c010ad90623485035d98564136bc5dbf0a8eab68530daf1fb34b"
+        },
+        {
+          "path": "lib/types/types.d.ts",
+          "beforeSha256": "f07f8f22ba299522421716e5abcf2d3ed4147a9ffc500b14d943701ee40d6ee8",
+          "afterSha256": "c477403b32eebc3c14c75f17f6fd121217c82cac121cad9ded122a15b6f6a362"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-llm",
+      "archive": "deepseek-ai-dsh-llm-0.2.1-alpha.3.tgz",
+      "archiveSha256": "ff6b3ef3ef8ba7730a19c00583e53f0526b64ecd4295a69c94187be10ada8636",
+      "patchSha256": "20594a04f7da15a4b1f4bb08436fdcaa7c0f7f4fe783c4713d4169de01f16541"
+    },
+    {
+      "filename": "dsh-agent@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/types/runtime-types.d.ts",
+          "beforeSha256": "7c03f0f92be4a48cc7960ac02fc040b2088b462ae790eab1427e50bfe5e74b31",
+          "afterSha256": "5189b561a1913a9114cd46b261580ab1b580d2d59bf635920f1e4f371571fae2"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-agent",
+      "archive": "deepseek-ai-dsh-agent-0.2.1-alpha.3.tgz",
+      "archiveSha256": "5699d3a6833a36b4d627ae1ca55ece864ec0ca3cdcd98f2a8e9688784d947515",
+      "patchSha256": "24cf2c85ab515375ef15b123a0e244012495e0ee43f6e52a66ba471eb4bdc43f"
+    },
+    {
+      "filename": "dsh-agent-loop@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "beforeSha256": "cf57e3ecd487ac5c2553455aaa5cef2c6fb41e6bd61be5aa455675d1d7193033",
+          "afterSha256": "bc00e0297bac9166ac06d7b3f4562482d2ae520f92de35d670a53df3386669dd"
+        },
+        {
+          "path": "lib/types/assistant-stream.d.ts",
+          "beforeSha256": "e81ae829fe3f4cf470fd18c7dee019d0643c13b6df5a2b620698b62f1f809b8d",
+          "afterSha256": "d39c930c032b7db823033c2dc1ba67c53b1764ed8e009ee40f4c0620e9f76b3c"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-agent-loop",
+      "archive": "deepseek-ai-dsh-agent-loop-0.2.1-alpha.3.tgz",
+      "archiveSha256": "7cb183efca0ce6f8843bb85f4df734b4dd236393aa63df06112d69f62539747c",
+      "patchSha256": "213b4f43585e34712d83dd04e7cf8e94fa6ee22f949b2d1e6512bce613022d65"
+    },
+    {
+      "filename": "dsh-session@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/types/types.d.ts",
+          "beforeSha256": "8e3b1b7f54d504ca91d3496376f9ea619f99ce1afe2739d35d9c2f2f69320950",
+          "afterSha256": "2926284eb2d01eb7635eb048a9bc3913a0b368277176a52d47090197061f11f2"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-session",
+      "archive": "deepseek-ai-dsh-session-0.2.1-alpha.3.tgz",
+      "archiveSha256": "cd39d37495aba27f30d622b06b3c407fcbc2a0843fd7430ae48bb7ef9bd89e52",
+      "patchSha256": "5a4c797414343fbfb787e79c249d043e648d7fa4068eb181eb50ebb643d66b1c"
+    },
+    {
+      "filename": "dsh-repeat-tool-reminder@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "beforeSha256": "d4596638ba6c9c76fbe4277fa3e20e3a345a13a45f167bfc1a88917ef724d65e",
+          "afterSha256": "9cb4590a2d569eb6588afd4595e1a068b0a5b4c4b958b50e6539321eb5ecb834"
+        },
+        {
+          "path": "lib/types/index.d.ts",
+          "beforeSha256": "24b7042bf7d6459ec66a68eac674f3cd7d44d5e39345a2236b9d21e66be48a89",
+          "afterSha256": "0117f8fa078c2baf55e607f4c4831e5985004d1d2d09fe60a51e04c2b6c6d2db"
+        },
+        {
+          "path": "lib/types/reasoning-policy.d.ts",
+          "beforeSha256": null,
+          "afterSha256": "5e163468e2543368067d7d310a6819fa94b24bccc78dfb96e29a042a239a9d3f"
+        },
+        {
+          "path": "lib/types/reasoning-watch.d.ts",
+          "beforeSha256": null,
+          "afterSha256": "c6f51336d765ebaa7344e77fa55b605c2bb5afdf4cc7a0e7c70800d3ae9499ec"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-repeat-tool-reminder",
+      "archive": "deepseek-ai-dsh-repeat-tool-reminder-0.2.1-alpha.3.tgz",
+      "archiveSha256": "dc700a1b49411e3db88d9e709b554caee2840963bf096043a15a376ba88e1cdd",
+      "patchSha256": "e909f56bb3ed7bbf246eada5ad77911d96043b52e51f6487982b71f66df8968c"
+    },
+    {
+      "filename": "dsh-llm-deepseek@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "beforeSha256": "eba35025ed1eedda89c51f2da46a3a968f7be1d59719f2ceeadfc4518dff37d6",
+          "afterSha256": "081e0338aecb724cda46a9c66caf680e202f2d4450fc997fa275be680c851f86"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-llm-deepseek",
+      "archive": "deepseek-ai-dsh-llm-deepseek-0.2.1-alpha.3.tgz",
+      "archiveSha256": "4640144ba0c65c9ed2de378651ffce6b9c4dbdbe78c21e67717eb3918ee8a5ad",
+      "patchSha256": "550ac8dbcc5d591ed8f5b30db0e54343536672f8d46c79ed7177cfcb47617a7b"
+    },
+    {
+      "filename": "dsh-llm-pi-ai@0.2.1-alpha.3.patch",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "beforeSha256": "99b5c20830a52f69641df8a18a39206079b0c725201958cce2c4a934f1d4f7cd",
+          "afterSha256": "d7c7f0d282c03732231b5c8f3f8217a6943c80b273a6cdfd740c1118761bcc43"
+        },
+        {
+          "path": "lib/types/config.d.ts",
+          "beforeSha256": "03411c1dc7705c2599f596e0fe142e7211f2b7f7da6b0b094dcae18b15259aaa",
+          "afterSha256": "d1dd68532da7ab21e3aa829c9afbd1f2b7b70c3cadf3362cec01a5c2ac8b097c"
+        },
+        {
+          "path": "lib/types/plain-reasoning.d.ts",
+          "beforeSha256": null,
+          "afterSha256": "d475d8b9617c35c00fb70d34b048bd6290d35f8b13308188f2ddf157e4cad3aa"
+        },
+        {
+          "path": "lib/types/stream.d.ts",
+          "beforeSha256": "34f506e0ad4429461d054877c69a03e3348dfa61a95a6ff53df6899648b1ace7",
+          "afterSha256": "5641bd3040c454031045951c61f14e18d0abc9d4c485fdfedd4a2b0be5b32e06"
+        }
+      ],
+      "package": "@deepseek-ai/dsh-llm-pi-ai",
+      "archive": "deepseek-ai-dsh-llm-pi-ai-0.2.1-alpha.3.tgz",
+      "archiveSha256": "df375a75b37d96f2b1a44762a1b4ed321a98df8c5ae94ad5432bf409c39119e9",
+      "patchSha256": "caea72b5cd88444a9d2f5fe60f31e609588776cacd3c368f38cff2c3bcbf3706"
+    }
+  ]
+}
