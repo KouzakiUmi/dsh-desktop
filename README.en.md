@@ -29,7 +29,7 @@
   <img src="https://img.shields.io/badge/Windows%20x64-4493F8?style=flat-square" alt="Supported platform: Windows x64">
 </p>
 
-DSH Desktop integrates the local Web UI, Host service, and plugin system from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) into a native desktop application. It builds and runs the Core commit recorded in [upstream.json](<upstream.json>); the configured Core branch maintains the pi-ai 1.2.0 adaptation, security fixes and Markdown price-rendering fixes. DSH Desktop provides the window, tray, terminal, updates and work profiles through DeepSeek Harness's plugin mechanism.
+DSH Desktop integrates the local Web UI, Host service, and plugin system from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) into a native desktop application. It builds and runs the Core commit recorded in [upstream.json](<upstream.json>); the configured Core branch maintains the pi-ai 1.3.0 adaptation, security fixes and Markdown price-rendering fixes. DSH Desktop provides the window, tray, terminal, updates and work profiles through DeepSeek Harness's plugin mechanism.
 
 <a id="run"></a>
 

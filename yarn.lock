@@ -6056,7 +6056,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-ai@npm:^1.3.0":
+"@earendil-works/pi-ai@npm:1.3.0":
   version: 1.3.0
   resolution: "@earendil-works/pi-ai@npm:1.3.0"
   dependencies:
@@ -6073,6 +6073,26 @@ __metadata:
   bin:
     pi-ai: dist/cli.js
   checksum: 10c0/341943325b72c447577b13e67eacc78293aa51af6afe12c6050ec9e0bfe66a15c0391d790954a0ce92b364a2b568c0b3f079c526f1e5889043535aae6d096b97
+  languageName: node
+  linkType: hard
+
+"@earendil-works/pi-ai@patch:@earendil-works/pi-ai@npm%3A1.3.0#./patches/pi-ai@1.3.0.patch::locator=deepseek-harness-desktop%40workspace%3A.":
+  version: 1.3.0
+  resolution: "@earendil-works/pi-ai@patch:@earendil-works/pi-ai@npm%3A1.3.0#./patches/pi-ai@1.3.0.patch::version=1.3.0&hash=8a6678&locator=deepseek-harness-desktop%40workspace%3A."
+  dependencies:
+    "@anthropic-ai/sdk": "npm:0.129.0"
+    "@aws-sdk/client-bedrock-runtime": "npm:3.1127.0"
+    "@earendil-works/pi-telemetry": "npm:1.3.0"
+    "@google/genai": "npm:2.21.0"
+    "@smithy/node-http-handler": "npm:4.12.1"
+    http-proxy-agent: "npm:9.1.0"
+    https-proxy-agent: "npm:9.1.0"
+    openai: "npm:7.19.0"
+    partial-json: "npm:0.1.7"
+    typebox: "npm:1.3.27"
+  bin:
+    pi-ai: dist/cli.js
+  checksum: 10c0/c69a747911ae22ceb5b478d994c052f7fadde6bbd82692f6cf4016e6175b75f311fe7c235c8b133323bb55330a6c17aa8de6b3656a151b0e27ff1194866b7f9c
   languageName: node
   linkType: hard
 
@@ -10180,7 +10200,7 @@ __metadata:
 
 "dshmarket@patch:dshmarket@npm%3A1.66.28#./.yarn/patches/dshmarket-desktop.patch::locator=deepseek-harness-desktop%40workspace%3A.":
   version: 1.66.28
-  resolution: "dshmarket@patch:dshmarket@npm%3A1.66.28#./.yarn/patches/dshmarket-desktop.patch::version=1.66.28&hash=3e47a2&locator=deepseek-harness-desktop%40workspace%3A."
+  resolution: "dshmarket@patch:dshmarket@npm%3A1.66.28#./.yarn/patches/dshmarket-desktop.patch::version=1.66.28&hash=c291f0&locator=deepseek-harness-desktop%40workspace%3A."
   dependencies:
     js-yaml: "npm:^4.3.2"
     undici: "npm:^7.29.1"
@@ -10193,7 +10213,7 @@ __metadata:
       optional: true
     "@deepseek-ai/schemastery":
       optional: true
-  checksum: 10c0/3c0eef9e8cbfd17ca9e10829dbe71368c9bc27939850d059fa01c58dd2abca9e1a2ee69d6a222dc7f9db41fe015462c331a083e628786b1eb3e2f44ef0373aad
+  checksum: 10c0/83b7e623a01a209447bbdb05f7ccbf25532b66f08997f4cc3b559328f017bcaa72fbdd4b4b205dc7b0b7708e9d74992aaa1e7df769e2cbd844498983d63d1364
   languageName: node
   linkType: hard
 

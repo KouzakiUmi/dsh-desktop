@@ -29,7 +29,7 @@
   <img src="https://img.shields.io/badge/Windows%20x64-4493F8?style=flat-square" alt="Supported platform: Windows x64">
 </p>
 
-DSH Desktop 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 Web UI、Host 服务和插件系统集成到原生桌面应用中。项目构建并运行 [upstream.json](<upstream.json>) 记录的 Core 固定提交；当前 Core 分支维护 pi-ai 1.2.0 适配、安全修复与 Markdown 价格渲染修复。DSH Desktop 提供窗口、托盘、终端、更新和工作配置，并通过 DeepSeek Harness 提供的插件机制与 Core 能力组合。
+DSH Desktop 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的本地 Web UI、Host 服务和插件系统集成到原生桌面应用中。项目构建并运行 [upstream.json](<upstream.json>) 记录的 Core 固定提交；当前 Core 分支维护 pi-ai 1.3.0 适配、安全修复与 Markdown 价格渲染修复。DSH Desktop 提供窗口、托盘、终端、更新和工作配置，并通过 DeepSeek Harness 提供的插件机制与 Core 能力组合。
 
 <a id="run"></a>
 
