@@ -8,8 +8,8 @@
 
 | 范围 | 当前约束与权威记录 |
 | --- | --- |
-| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前已推送基线为 [f43a201](https://github.com/KouzakiUmi/deepseek-harness/commit/f43a201de78c2926820a6670bbb8b653a39b0308)。 |
-| Desktop pin 与包来源 | [upstream.json](<../upstream.json>)、[子模块配置](<../.gitmodules>)、[runtime manifest](<../vendor/dsh-runtime/0.2.1-alpha.3/manifest.json>) 必须指向同一维护 Core 提交；包版本号相同不能代替来源提交与校验和。 |
+| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前已推送基线为 [fcd4609c02](https://github.com/KouzakiUmi/deepseek-harness/commit/fcd4609c0289c1f38cb063959588143ca58a2926)。 |
+| Desktop pin 与包来源 | [upstream.json](<../upstream.json>)、[子模块配置](<../.gitmodules>)、[runtime manifest](<../vendor/dsh-runtime/0.2.1-alpha.4/manifest.json>) 必须指向同一维护 Core 提交；包版本号相同不能代替来源提交与校验和。 |
 | NEXT | 仅 Windows x64。窗口、终端、更新、权限、打包、解释器载荷和图标由 NEXT 维护，不重新引入其它平台入口。 |
 | 借用实现 | [upstream-reference.json](<../dsh-desktop-next/upstream-reference.json>) 记录上游文件及原始 SHA-256；它不是本地适配文件必须等于上游的声明。逐文件合并，不整目录覆盖本地 Windows 适配。 |
 | 包管理 | 外层 Yarn 4.18.0 与子模块 pnpm 分离。外层 [架构配置](<../.yarnrc.yml>) 只安装 win32/x64 可选依赖；不能靠删除 Core 的其它平台源码来瘦身。 |
@@ -21,8 +21,8 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 
 | 差异 | 保留的行为与核对位置 |
 | --- | --- |
-| pi-ai 1.2.0 精简适配 | [Yarn 补丁](<../patches/pi-ai@1.2.0.patch>) 在六个 provider 模块中删除七行 delta 阶段的重复部分 JSON 解析；保留参数文本累积及完成阶段解析。Core 的 pnpm 补丁与此保持语义一致。不要带回 0.87 分支或 1.1 时代的大块兼容覆盖。用 `yarn why @earendil-works/pi-ai` 核对实际只有目标版本及目标补丁。 |
-| 美元价格与公式 | [Core currencyAwareMath](https://github.com/KouzakiUmi/deepseek-harness/blob/f43a201de78c2926820a6670bbb8b653a39b0308/packages/client/ui-primitives/src/markdown/currencyAwareMath.ts) 与对应 parser、单测、真实消息渲染测试一并保留。价格、CJK、`between $5 and $10 (see $x$)` 不应吞成公式；`$x$`、`$2+2$`、带合法 padding 的公式及块公式仍须可用。不能以禁用数学渲染替代修复。 |
+| pi-ai 1.3.0 精简适配 | [Yarn 补丁](<../patches/pi-ai@1.3.0.patch>) 在六个 provider 模块中删除七行 delta 阶段的重复部分 JSON 解析；保留参数文本累积及完成阶段解析。Core 的 pnpm 补丁与此保持语义一致。不要带回 0.87 分支或 1.1 时代的大块兼容覆盖。用 `yarn why @earendil-works/pi-ai` 核对实际只有目标版本及目标补丁。 |
+| 美元价格与公式 | [Core currencyAwareMath](https://github.com/KouzakiUmi/deepseek-harness/blob/fcd4609c0289c1f38cb063959588143ca58a2926/packages/client/ui-primitives/src/markdown/currencyAwareMath.ts) 与对应 parser、单测、真实消息渲染测试一并保留。价格、CJK、`between $5 and $10 (see $x$)` 不应吞成公式；`$x$`、`$2+2$`、带合法 padding 的公式及块公式仍须可用。不能以禁用数学渲染替代修复。 |
 | ZIP 调用面安全 | Windows Node、Python wheel 等下载解压前校验归档来源与摘要，并在 entry 回调拒绝 symlink、设备及其它特殊 Unix 文件类型。Unix mode 位是归档安全元数据，不是可删的 macOS/Linux 产品支持代码。保留真正恶意 ZIP 的负向测试。 |
 | 目录别名安全清理 | [disposable-tree.ts](<../dsh-desktop-next/adopted/src/disposable-tree.ts>) 不只信任 `lstat().isSymbolicLink()`：用 native realpath 比较条目和其真实父目录下的预期位置；目录别名只移除入口，不递归目标。普通 realpath 不能替代 native 版本；Windows 比较使用 `path.relative` 的大小写语义。 |
 | 更新 UX 与退出握手 | [updates.ts](<../dsh-desktop-next/src/updates.ts>) 保持错误可见、失败 cache 初始化可重试、成功后不反复扫描；通知去重不等于自动安装。[installer.nsh](<../dsh-desktop-next/adopted/build/installer.nsh>) 保持可见安装和显式重启，per-machine 更新必须在 UAC 交接前等待旧应用退出，不得改回静默 `/S` 或只依赖提权内层检查。调用 `CHECK_APP_RUNNING` 包装宏初始化进程路径，不直接调用自定义检查；[builder 补丁](<../patches/app-builder-lib@26.15.7.patch>) 的一次声明守卫允许初始化阶段和安装 Section 重复展开，避免未知变量或重复声明。 |
@@ -32,6 +32,8 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 | ASAR 自身包解析 | [Host 自身包解析](<../dsh-desktop-next/src/host/own-package.ts>) 只把安装包自己已声明的 file/default exports 映射为包内 URL；其它包仍走既有链，不复制应用到 Profile、不导出私有子路径。源码目录能被普通 Node 找到不能替代真实封装 Host 验证。 |
 | AA 桥接 | [Connector 补丁](<../patches/agents-anywhere-connector-httpx.patch>) 保留子进程 httpx 的裸 IPv6 bypass、父环境隔离、Connector 日志与 JSON 传输后一致的内容哈希。[AA policy](<../scripts/agents-anywhere-release-policy.mjs>) 统一维护五个 runtime peers，包含 Cordis/Schemastery；不要再在补丁里硬编码另一套旧 peer 范围。当前 Gateway 的事件订阅和回复必须使用同一个受 Context 生命周期管理的真实 Peer，不能传 undefined、借用浏览器 Peer 或靠函数 arity 猜测兼容。 |
 
+| 循环 CoT 守卫运行实现 | 该实现与其运行文件随维护 Core 提交进入 vendored 运行时，不再以版本绑定补丁补齐。不恢复十二包候选／root 补丁、导出器及其校验入口；升级 Core 时按第 4 节推进 pin、manifest 与锁文件。 |
+
 升级依赖以当前同主版本安全修复为优先；必须区分生产图、开发图、临时 AA staging 图和已打包客户端代码。当前交付图中的 extract-zip 2.0.1 仍有 [GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) 与 [GHSA-7pqw-9j4j-h8q3](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3)：调用面防护不等于公告消失。不要排除包、忽略 advisory 或把弃用提示混同为漏洞清零。
 
 Yarn 4.18.0 的递归审计遇到 patch:file 源描述符未绑定时可能内部断言失败，这不代表没有漏洞。若使用诊断适配，必须核对同版本实现，只把缺失的 file 描述符绑定到同 ident、同源路径且唯一的已登记 resolution；非 file 缺失或歧义必须失败。不得改全局 CLI、跳过图节点或省略完整原始报告；未来上游修复后应退休临时适配，而非长期依赖 minified 内部变量。
@@ -40,6 +42,7 @@ Yarn 4.18.0 的递归审计遇到 patch:file 源描述符未绑定时可能内�
 
 ## 3. 不应回导的内容
 
+- 不恢复针对运行包的十二包守卫补丁集、其候选目录、导出器及校验命令；该实现已由维护 Core 提交携带，重复的补丁只会与产物分叉。
 - 不恢复 macOS/Linux 打包、签名、公证、universal/arm64 入口、Darwin Shell 环境捕获、macOS window material/traffic-light 处理、ICNS 与 tray template 图标；Windows 权限入口与原生来源选择仍需保留。
 - 不恢复旧 Stable/Beta workspace、双变体同步器、旧通道 API 范围或已删除包的文档链接；不能为了修复断链而把整个旧产品复制回来。
 - 不把 parameterized 文件过滤器、归档 mode 检查、第三方平台中立库或 Core 官方平台实现误删成“其它平台代码”。

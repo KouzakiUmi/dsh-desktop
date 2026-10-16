@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/KouzakiUmi/deepseek-harness",
-  "commit": "f43a201de78c2926820a6670bbb8b653a39b0308",
-  "version": "0.2.1-alpha.3",
+  "commit": "fcd4609c0289c1f38cb063959588143ca58a2926",
+  "version": "0.2.1-alpha.4",
   "files": [
     {
       "upstream": "apps/desktop/src/host-process.ts",
@@ -146,7 +146,7 @@
     {
       "upstream": "apps/desktop-host/src/office.ts",
       "local": "src/host/office.ts",
-      "upstreamSha256": "33c85997b69dacd6a9e5410d3c101039dd0e9a4cc8f63f9bbdfee1242390a668"
+      "upstreamSha256": "476724125820e03f258aee5939ea9adbda9c3125b7b07bd41cb0e6ee48bf34e3"
     },
     {
       "upstream": "apps/desktop-host/tests/office.spec.ts",

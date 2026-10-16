@@ -350,6 +350,7 @@ function managementMessage(error: ManagementError | undefined): string | undefin
       const named = (error.incompatible ?? []).map(plugin => `${plugin.name}@${plugin.version}`).join(', ')
       return `The plugin is not compatible with the running DSH version${named === '' ? '' : ` (${named})`}.`
     }
+    case 'already-installed': return 'This plugin is already managed by the active profile.'
     case 'not-bundle': return 'The package does not declare a DSH plugin bundle.'
     case 'ambiguous-install': return 'The package manager changed more than one dependency, so the installed plugin could not be identified.'
     case 'not-removable': return 'This plugin cannot be removed by the plugin manager.'
