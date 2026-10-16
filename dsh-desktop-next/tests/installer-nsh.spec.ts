@@ -53,6 +53,10 @@ describe('Windows NSIS running-app handoff', () => {
   })
 
   it('skips wizard pages during --updated and auto-relaunches when --force-run completes visibly', () => {
+    expect(script).toContain('!macro customInit')
+    expect(script).toContain('SetSilent normal')
+    expect(script).toContain('ShowWindow $HWNDPARENT ${SW_SHOW}')
+    expect(script).toContain('BringToFront')
     expect(script).toContain('!macro customInstallMode')
     expect(script).toContain('!macro customInstall')
     const mode = macroBody('customInstallMode')
