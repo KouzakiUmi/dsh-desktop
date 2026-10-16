@@ -51,7 +51,6 @@ diff --git a/lib/index.js b/lib/index.js
  				stream: (options) => {
  					if (dispatched) throw new LlmError("a prepared LLM call can only be dispatched once", "INVALID_PREPARED_CALL");
  					if (!callConfigEquals(options, resolvedConfig)) throw new LlmError("prepared LLM call config changed before adapter dispatch", "INVALID_PREPARED_CALL");
-
 diff --git a/lib/typert.host.js b/lib/typert.host.js
 --- a/lib/typert.host.js
 +++ b/lib/typert.host.js
@@ -111,7 +110,6 @@ diff --git a/lib/typert.host.js b/lib/typert.host.js
              "name": "ReplayEnvelope",
              "declaration": "export interface ReplayEnvelope {\n    response: unknown;\n    blocks?: readonly unknown[];\n}"
            },
-
 diff --git a/lib/typert.remote-client.js b/lib/typert.remote-client.js
 --- a/lib/typert.remote-client.js
 +++ b/lib/typert.remote-client.js
@@ -142,7 +140,6 @@ diff --git a/lib/typert.remote-client.js b/lib/typert.remote-client.js
      },
    },
  }, z)
-
 diff --git a/lib/types/assembler.d.ts b/lib/types/assembler.d.ts
 --- a/lib/types/assembler.d.ts
 +++ b/lib/types/assembler.d.ts
@@ -162,7 +159,6 @@ diff --git a/lib/types/assembler.d.ts b/lib/types/assembler.d.ts
      /** Invariant accessor: every index in `order` has a partial. */
      private mustGet;
      /**
-
 diff --git a/lib/types/assembler.js b/lib/types/assembler.js
 --- a/lib/types/assembler.js
 +++ b/lib/types/assembler.js
@@ -188,7 +184,6 @@ diff --git a/lib/types/assembler.js b/lib/types/assembler.js
      /** Invariant accessor: every index in `order` has a partial. */
      mustGet(index) {
          const partial = this.partials.get(index);
-
 diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
@@ -201,7 +196,6 @@ diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
      /** Config fields materialized by the captured adapter rather than proposed by the caller. */
      readonly adapterDefaults: LlmCallConfigAdapterDefaults;
      /**
-
 diff --git a/lib/types/index.js b/lib/types/index.js
 --- a/lib/types/index.js
 +++ b/lib/types/index.js
@@ -232,7 +226,6 @@ diff --git a/lib/types/index.js b/lib/types/index.js
                  stream: (options) => {
                      if (dispatched) {
                          throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL');
-
 diff --git a/lib/types/types.d.ts b/lib/types/types.d.ts
 --- a/lib/types/types.d.ts
 +++ b/lib/types/types.d.ts

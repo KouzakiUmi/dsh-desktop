@@ -17,6 +17,17 @@ export const REASONING_PACKAGES = [
   'packages/guard/repeat-tool-reminder',
   'packages/llm/llm-deepseek',
   'packages/llm/llm-pi-ai',
+  // The Chat browser bundle: detection stages, the retained prefix, and the
+  // recovery notice are presented by ui-chat's client artifact, which the
+  // payload serves from node_modules at runtime.
+  'packages/client/ui-chat',
+  // Consumers of the new live stage frame: the Host session bridge and the
+  // Conversation/Trajectory/Inspector client bundles the payload serves.
+  'packages/api/session-controller',
+  'packages/client/ui-conversation',
+  'packages/client/ui-trajectory',
+  'packages/experimental/session-inspector',
+  'packages/bundle/headless',
 ]
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')

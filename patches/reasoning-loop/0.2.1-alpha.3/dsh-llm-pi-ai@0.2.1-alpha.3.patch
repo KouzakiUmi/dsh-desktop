@@ -351,7 +351,6 @@ diff --git a/lib/index.js b/lib/index.js
  				let exhausted = false;
  				try {
  					while (true) {
-
 diff --git a/lib/types/config.d.ts b/lib/types/config.d.ts
 --- a/lib/types/config.d.ts
 +++ b/lib/types/config.d.ts
@@ -399,7 +398,6 @@ diff --git a/lib/types/config.d.ts b/lib/types/config.d.ts
          models: z<PiAiModelProfile[], PiAiModelProfile[], "plain">;
          modelOverrides: z<import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, import("@deepseek-ai/cosmokit").Dict<PiAiModelOverride, string>, "plain">;
          compat: z<PiAiCompatProfile>;
-
 diff --git a/lib/types/plain-reasoning.d.ts b/lib/types/plain-reasoning.d.ts
 new file mode 100644
 --- /dev/null
@@ -427,7 +425,6 @@ new file mode 100644
 +export declare function plainAssistant(native: AssistantMessage, target: Model<Api>): AssistantMessage;
 +//# sourceMappingURL=plain-reasoning.d.ts.map
 \ No newline at end of file
-
 diff --git a/lib/types/stream.d.ts b/lib/types/stream.d.ts
 --- a/lib/types/stream.d.ts
 +++ b/lib/types/stream.d.ts

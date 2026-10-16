@@ -28,7 +28,7 @@ diff --git a/lib/index.js b/lib/index.js
  				stream: (options) => {
  					if (dispatched) throw new LlmError("a prepared LLM call can only be dispatched once", "INVALID_PREPARED_CALL");
  					if (!callConfigEquals(options, resolvedConfig)) throw new LlmError("prepared LLM call config changed before adapter dispatch", "INVALID_PREPARED_CALL");
-@@ -2105,16 +2109,353 @@
+@@ -2105,16 +2109,774 @@
  	};
  }
  //#endregion
@@ -93,8 +93,25 @@ diff --git a/lib/index.js b/lib/index.js
 +	* @returns accepted text and whether the local suppression budget was exhausted.
 +	*/
 +	push(text) {
++		return this.consume(text, true);
++	}
++	/**
++	* Settle text that a caller withheld at a barrier, together with this watch's
++	* own unresolved text. Confirmed copies stay suppressed, and the arrival order
++	* of every character is preserved. A settle never starts a cancellation: the
++	* observation window for text withheld this long has passed, and a stop that
++	* can no longer abort the call would otherwise drop characters the caller
++	* still owes its own consumer.
++	* @param text - caller-withheld original text in arrival order.
++	* @returns accepted text in arrival order, with confirmed copies removed.
++	*/
++	release(text) {
++		return this.flush() + this.consume(text, false).text + this.flush();
++	}
++	consume(text, allowCancel) {
 +		let emitted = "";
-+		for (let position = 0; position < text.length && !this.stopped; position += 1) {
++		for (let position = 0; position < text.length; position += 1) {
++			if (allowCancel && this.stopped) break;
 +			const char = text.charAt(position);
 +			const start = this.offset++;
 +			this.raw = (this.raw + char).slice(-this.config.windowChars);
@@ -123,7 +140,7 @@ diff --git a/lib/index.js b/lib/index.js
 +			if (evidence.extent >= this.config.confirmChars) this.phase = "suppressing";
 +			if (this.phase === "suppressing") {
 +				this.suppress(evidence.copies);
-+				if (!this.protected && this.omitted >= this.config.cancelChars && evidence.extent >= this.config.holdChars) {
++				if (allowCancel && !this.protected && this.omitted >= this.config.cancelChars && evidence.extent >= this.config.holdChars) {
 +					this.stopped = true;
 +					break;
 +				}
@@ -135,7 +152,7 @@ diff --git a/lib/index.js b/lib/index.js
 +		}
 +		return {
 +			text: emitted,
-+			interrupt: this.stopped
++			interrupt: allowCancel && this.stopped
 +		};
 +	}
 +	/**
@@ -231,9 +248,336 @@ diff --git a/lib/index.js b/lib/index.js
 +		this.pendingChars = remaining.reduce((sum, part) => sum + part.text.length, 0);
 +	}
 +};
++/** Defaults materialized by the owning plugin's configuration schema. */
++const visibleStallDefaults = {
++	windowChars: 1024,
++	maxWindowChars: 8192,
++	scanChars: 128,
++	minUnits: 16,
++	unitShare: .5,
++	unitCharShare: .15,
++	shingleChars: 8,
++	shingleShare: .6,
++	confirmWindows: 3,
++	recoveryWindows: 2
++};
++/**
++* Reject settings that would defeat the bounded, majority-evidence contract.
++* @param config - deployment-selected complete budgets.
++* @throws when a count is not a positive safe integer, the window exceeds {@link visibleStallRetentionCeiling}, or a share is not a majority below one.
++*/
++function validateVisibleStallConfig(config) {
++	for (const key of [
++		"windowChars",
++		"maxWindowChars",
++		"scanChars",
++		"minUnits",
++		"shingleChars",
++		"confirmWindows",
++		"recoveryWindows"
++	]) if (!Number.isSafeInteger(config[key]) || config[key] < 1) throw new Error(`reasoningLoop.visibleStall.${key} must be a positive safe integer`);
++	if (config.maxWindowChars > 8192 || config.windowChars > config.maxWindowChars || config.scanChars > config.windowChars || config.minUnits < 3 || config.shingleChars < 4 || config.shingleChars * 4 > config.windowChars || config.confirmWindows < 2 || config.recoveryWindows < 2 || !Number.isFinite(config.unitShare) || config.unitShare < .5 || config.unitShare > 1 || !Number.isFinite(config.unitCharShare) || config.unitCharShare <= 0 || config.unitCharShare > config.unitShare || !Number.isFinite(config.shingleShare) || config.shingleShare <= .5 || config.shingleShare > 1) throw new Error("reasoningLoop.visibleStall requires initial <= maximum <= 8192, scan <= initial, units >= 3, 4 <= fragment <= initial / 4, confirmations/recovery >= 2, majority unit evidence, and 0 < unitCharShare <= unitShare");
++}
++/** Sentence terminators shared with the exact-copy pool metric, so both observe the same units. */
++const UNIT_PATTERN = /[^。！？!?；;\r\n]+[。！？!?；;\r\n]+/gu;
++/** Characters that may delimit a fenced code block, and the delimiter run that counts as one. */
++const FENCE_MARKERS = "`~";
++const FENCE_MIN_RUN = 3;
++const FENCE_MAX_INDENT = 3;
++/** A line that has not started yet. */
++function emptyFenceLine() {
++	return {
++		indent: 0,
++		run: 0,
++		marker: "",
++		rest: 0,
++		restBlank: true,
++		restMarker: false,
++		dead: false
++	};
++}
++/**
++* Stop-only stall over one reasoning block's original characters. Detection uses
++* sentence recurrence in a rolling window plus the fraction of characters
++* inside locally repeated fragments; evidence never rewrites text, and every
++* released character leaves the stall exactly once. Fenced code suspends
++* detection so example scaffolding is not mistaken for repeated prose.
++*/
++var VisibleStallWatch = class {
++	config;
++	raw = "";
++	pendingChars = 0;
++	received = 0;
++	capacity;
++	holding = false;
++	high = 0;
++	low = 0;
++	stopped = false;
++	protected = false;
++	fence;
++	line = emptyFenceLine();
++	/** Set only while a fence transition releases, so the release reports its real cause. */
++	releasedByFence = false;
++	constructor(config) {
++		this.config = config;
++		validateVisibleStallConfig(config);
++		this.capacity = config.windowChars;
++	}
++	/**
++	* Characters retained independently of every caller-owned string. The withheld
++	* suffix is a suffix of this buffer, so the complete retention is one window.
++	*/
++	get retainedChars() {
++		return this.raw.length;
++	}
++	/** Current observation window, which expands toward the configured ceiling while withholding. */
++	get windowChars() {
++		return this.capacity;
++	}
++	/** Characters currently withheld from the caller. */
++	get heldChars() {
++		return this.pendingChars;
++	}
++	/**
++	* Disable cancellation after a complete protocol tool block. Withholding keeps
++	* working; a confirmed observation then releases instead of discarding, because
++	* unfinished tool output belongs to the settlement budget, not to this stall.
++	*/
++	protectCommit() {
++		this.protected = true;
++	}
++	/**
++	* Release every unresolved character at an output barrier or final settlement.
++	* @returns withheld original text in arrival order; empty after an interruption, whose suffix is already gone.
++	*/
++	flush() {
++		const text = this.stopped ? "" : this.releaseHeld();
++		this.pendingChars = 0;
++		this.resetObservation();
++		return text;
++	}
++	/**
++	* Consume one original character in arrival order.
++	* @param char - exactly one character of unmodified reasoning output.
++	* @returns the text released for this character, whether the held suffix was
++	* discarded, and the withholding transition this character caused.
++	*/
++	push(char) {
++		this.releasedByFence = false;
++		const holding = this.holding;
++		const result = this.step(char);
++		if (result.interrupt || this.holding === holding) return result;
++		return {
++			...result,
++			transition: this.holding ? "suspected" : this.releasedByFence ? "barrier" : "released"
++		};
++	}
++	/** One character through the detector; `push` adds the withholding transition around it. */
++	step(char) {
++		if (this.stopped) return {
++			text: "",
++			interrupt: true
++		};
++		if (this.scanFenceLine(char) !== void 0) {
++			this.releasedByFence = true;
++			return {
++				text: this.flush() + char,
++				interrupt: false
++			};
++		}
++		if (this.fence !== void 0) return {
++			text: char,
++			interrupt: false
++		};
++		const holding = this.holding;
++		if (holding) this.pendingChars += 1;
++		this.raw += char;
++		this.received += 1;
++		if (this.raw.length > this.config.maxWindowChars) this.raw = this.raw.slice(-this.config.maxWindowChars);
++		if (this.holding && this.pendingChars >= this.config.maxWindowChars) {
++			if (!this.protected && this.qualifies()) {
++				this.stopped = true;
++				this.pendingChars = 0;
++				return {
++					text: "",
++					interrupt: true
++				};
++			}
++			return {
++				text: this.flush(),
++				interrupt: false
++			};
++		}
++		if (this.received % this.config.scanChars !== 0) return {
++			text: holding ? "" : char,
++			interrupt: false
++		};
++		if (this.holding && this.capacity < this.config.maxWindowChars && (this.raw.length >= this.capacity || this.pendingChars >= this.capacity)) this.capacity = Math.min(this.config.maxWindowChars, this.capacity * 2);
++		if (this.raw.length > this.capacity) this.raw = this.raw.slice(-this.capacity);
++		if (this.raw.length < this.config.windowChars) return {
++			text: char,
++			interrupt: false
++		};
++		const qualifies = this.qualifies();
++		if (!this.holding) {
++			if (qualifies) {
++				this.holding = true;
++				this.high = 1;
++			}
++			return {
++				text: char,
++				interrupt: false
++			};
++		}
++		if (qualifies) {
++			this.high += 1;
++			this.low = 0;
++		} else {
++			this.high = 0;
++			this.low += 1;
++		}
++		if (!this.protected && this.high >= this.config.confirmWindows) {
++			this.stopped = true;
++			this.pendingChars = 0;
++			return {
++				text: "",
++				interrupt: true
++			};
++		}
++		if (this.high >= this.config.confirmWindows || this.low >= this.config.recoveryWindows) return {
++			text: this.flush(),
++			interrupt: false
++		};
++		return {
++			text: "",
++			interrupt: false
++		};
++	}
++	/** Take the withheld suffix out of the observation window, in arrival order. */
++	releaseHeld() {
++		const text = this.pendingChars === 0 ? "" : this.raw.slice(this.raw.length - this.pendingChars);
++		this.pendingChars = 0;
++		return text;
++	}
++	/** Drop the observation window; a barrier is not evidence about the text after it. */
++	resetObservation() {
++		this.raw = "";
++		this.received = 0;
++		this.capacity = this.config.windowChars;
++		this.holding = false;
++		this.high = 0;
++		this.low = 0;
++	}
++	/** Whether the current observation shows repeated sentences over reused characters. */
++	qualifies() {
++		const units = [...this.raw.matchAll(UNIT_PATTERN)].map((match) => match[0].trim()).filter((unit) => unit.length > 0);
++		if (units.length < this.config.minUnits) return false;
++		const counts = /* @__PURE__ */ new Map();
++		let totalChars = 0;
++		for (const unit of units) {
++			totalChars += unit.length;
++			const seen = counts.get(unit);
++			if (seen === void 0) counts.set(unit, 1);
++			else counts.set(unit, seen + 1);
++		}
++		let repeated = 0;
++		let repeatedChars = 0;
++		for (const [unit, count] of counts) if (count > 1) {
++			repeated += count;
++			repeatedChars += count * unit.length;
++		}
++		if (repeated / units.length < this.config.unitShare) return false;
++		if (repeatedChars / totalChars < this.config.unitCharShare) return false;
++		const size = this.config.shingleChars;
++		const distance = size * 2;
++		const first = /* @__PURE__ */ new Map();
++		const covered = new Uint8Array(this.raw.length);
++		let coveredChars = 0;
++		for (let start = 0; start + size <= this.raw.length; start += 1) {
++			const fragment = this.raw.slice(start, start + size);
++			const previous = first.get(fragment);
++			if (previous === void 0) {
++				first.set(fragment, start);
++				continue;
++			}
++			if (start - previous < distance) continue;
++			for (let index = start; index < start + size; index += 1) if (covered[index] === 0) {
++				covered[index] = 1;
++				coveredChars += 1;
++			}
++		}
++		return coveredChars / this.raw.length >= this.config.shingleShare;
++	}
++	/**
++	* Track fenced-code delimiters from the bounded line prefix.
++	* @param char - the character just received.
++	* @returns `open` or `close` when this character completed a fence line, otherwise `undefined`.
++	*/
++	scanFenceLine(char) {
++		if (char === "\n" || char === "\r") {
++			const line = this.line;
++			this.line = emptyFenceLine();
++			if (line.dead || line.run < FENCE_MIN_RUN) return void 0;
++			const open = this.fence;
++			if (open === void 0) {
++				if (line.marker === "`" && line.restMarker) return void 0;
++				this.fence = {
++					marker: line.marker,
++					run: line.run
++				};
++				return "open";
++			}
++			if (line.marker === open.marker && line.run >= open.run && line.restBlank) {
++				this.fence = void 0;
++				return "close";
++			}
++			return;
++		}
++		const line = this.line;
++		if (line.dead) return void 0;
++		if (line.run === 0 && line.rest === 0) {
++			if (char === " ") {
++				line.indent += 1;
++				if (line.indent > FENCE_MAX_INDENT) line.dead = true;
++				return;
++			}
++			if (FENCE_MARKERS.includes(char)) {
++				line.marker = char;
++				line.run = 1;
++				return;
++			}
++			line.dead = true;
++			return;
++		}
++		if (line.rest === 0 && char === line.marker) {
++			line.run += 1;
++			return;
++		}
++		if (line.run < FENCE_MIN_RUN) {
++			line.dead = true;
++			return;
++		}
++		line.rest += 1;
++		if (char === line.marker) line.restMarker = true;
++		if (char !== " " && char !== "	") line.restBlank = false;
++	}
++};
 +//#endregion
 +//#region lib/types/reasoning-policy.js
 +/** Optional reasoning-copy policy, independent of advisory tool-call reminders. */
++/** Dam settings, defaulted field-by-field so a deployment may override one budget without restating the rest. */
++const visibleStallConfig = z.object({
++	windowChars: z.number().default(visibleStallDefaults.windowChars),
++	maxWindowChars: z.number().default(visibleStallDefaults.maxWindowChars),
++	scanChars: z.number().default(visibleStallDefaults.scanChars),
++	minUnits: z.number().default(visibleStallDefaults.minUnits),
++	unitShare: z.number().default(visibleStallDefaults.unitShare),
++	unitCharShare: z.number().default(visibleStallDefaults.unitCharShare),
++	shingleChars: z.number().default(visibleStallDefaults.shingleChars),
++	shingleShare: z.number().default(visibleStallDefaults.shingleShare),
++	confirmWindows: z.number().default(visibleStallDefaults.confirmWindows),
++	recoveryWindows: z.number().default(visibleStallDefaults.recoveryWindows)
++});
 +/** Validated settings; omission at the owning plugin disables this policy entirely. */
 +const ReasoningLoopConfig = z.object({
 +	windowChars: z.number().default(4096),
@@ -245,10 +589,15 @@ diff --git a/lib/index.js b/lib/index.js
 +	maxPeriodChars: z.number().default(192),
 +	minPoolUnits: z.number().default(16),
 +	poolShare: z.number().default(.75),
++	visibleStall: z.union([z.const(false), visibleStallConfig]).default({}),
 +	maxRecoveries: z.number().default(1),
 +	settlementBudget: z.number().default(65536)
 +});
 +const RECOVERY_PROMPT = "The preceding reasoning was interrupted after sustained repetition. Its retained prefix is available above; repeated copies were discarded. Continue the unfinished task using a different approach. Do not repeat that reasoning. Use the actual tool protocol when an action is needed.";
++const VISIBLE_RECOVERY_PROMPT = "The preceding reasoning was interrupted after sustained repetition of nearly identical sentences. Its retained prefix is available above exactly as written; the unconfirmed repetitive tail was discarded. Continue the unfinished task using a different approach. Do not repeat that reasoning. Use the actual tool protocol when an action is needed.";
++const REPETITION_FAILURE = "Reasoning output was interrupted after sustained exact-copy repetition.";
++const VISIBLE_REPETITION_FAILURE = "Reasoning output was interrupted after sustained repetition of nearly identical reasoning sentences.";
++const SETTLEMENT_FAILURE = "Output after a tool call exceeded the local settlement budget before finishing. No tools from this call were dispatched.";
 +/**
 +* Filter one reasoning block without retaining another complete copy of its text.
 +* Interleaved non-reasoning events release unresolved text before passing through.
@@ -257,15 +606,19 @@ diff --git a/lib/index.js b/lib/index.js
 +*/
 +var ReasoningOutputPolicy = class {
 +	interrupt;
++	enabled;
 +	watch;
++	stall;
 +	index;
 +	closed = false;
 +	localInterruption;
 +	settlementLeft;
 +	settlementBudget;
-+	constructor(config, interrupt) {
++	constructor(config, interrupt, enabled) {
 +		this.interrupt = interrupt;
++		this.enabled = enabled;
 +		this.watch = new ReasoningWatch(config);
++		this.stall = config.visibleStall === false ? void 0 : new VisibleStallWatch(config.visibleStall);
 +		this.settlementBudget = config.settlementBudget;
 +	}
 +	get interruption() {
@@ -283,14 +636,15 @@ diff --git a/lib/index.js b/lib/index.js
 +		if (chunk.type === "reasoning-delta") {
 +			if (this.index === void 0) this.index = chunk.index;
 +			if (chunk.index !== this.index || this.closed) return [...this.flush(), chunk];
-+			const result = this.watch.push(chunk.text);
-+			const items = result.text.length === 0 ? [] : [{
++			const accepted = this.accept(chunk.text);
++			const items = this.stageItems(accepted.stages);
++			if (accepted.text.length > 0) items.push({
 +				...chunk,
-+				text: result.text
-+			}];
-+			if (result.interrupt) {
++				text: accepted.text
++			});
++			if (accepted.reason !== void 0) {
 +				items.push(...this.flush());
-+				this.localInterruption = this.interrupt("repetition");
++				this.localInterruption = this.interrupt(accepted.reason);
 +			}
 +			return items;
 +		}
@@ -304,6 +658,7 @@ diff --git a/lib/index.js b/lib/index.js
 +		} else {
 +			if (chunk.type === "block-end" && chunk.block.type === "tool-call" && chunk.block.id.length > 0 && chunk.block.name.length > 0) {
 +				this.watch.protectCommit();
++				this.stall?.protectCommit();
 +				this.settlementLeft ??= this.settlementBudget;
 +			}
 +			items.push(chunk);
@@ -311,12 +666,70 @@ diff --git a/lib/index.js b/lib/index.js
 +		return items;
 +	}
 +	flush() {
-+		const text = this.watch.flush();
-+		return text.length === 0 || this.index === void 0 ? [] : [{
++		const stall = this.stall;
++		const items = stall !== void 0 && stall.heldChars > 0 ? this.stageItems(["barrier"]) : [];
++		const withheld = stall?.flush() ?? "";
++		const text = withheld.length === 0 ? this.watch.flush() : this.watch.release(withheld);
++		if (text.length > 0 && this.index !== void 0) items.push({
 +			type: "reasoning-delta",
 +			index: this.index,
 +			text
-+		}];
++		});
++		return items;
++	}
++	/**
++	* Gate one delta through the stall, then through exact-copy filtering. The stall
++	* sees every original character, so neither detector depends on delta
++	* boundaries. Text the stall withholds reaches the exact-copy filter when the
++	* stall releases it, and an interruption discards the withheld suffix instead.
++	*/
++	accept(text) {
++		const stall = this.stall;
++		if (stall === void 0) {
++			const result = this.watch.push(text);
++			return result.interrupt ? {
++				text: result.text,
++				reason: "repetition",
++				stages: []
++			} : {
++				text: result.text,
++				stages: []
++			};
++		}
++		let emitted = "";
++		const stages = [];
++		for (let position = 0; position < text.length; position += 1) {
++			const gate = stall.push(text.charAt(position));
++			if (gate.transition !== void 0) stages.push(gate.transition);
++			if (gate.text.length > 0) {
++				const filtered = this.watch.push(gate.text);
++				emitted += filtered.text;
++				if (filtered.interrupt) return {
++					text: emitted,
++					reason: "repetition",
++					stages
++				};
++			}
++			if (gate.interrupt) return {
++				text: emitted,
++				reason: "visible-repetition",
++				stages
++			};
++		}
++		return {
++			text: emitted,
++			stages
++		};
++	}
++	/** Announce each withholding transition this call made; a disposed policy announces nothing. */
++	stageItems(stages) {
++		const index = this.index;
++		if (index === void 0 || stages.length === 0 || !this.enabled()) return [];
++		return stages.map((stage) => ({
++			type: "reasoning-stall",
++			stage,
++			index
++		}));
 +	}
 +};
 +/**
@@ -326,6 +739,7 @@ diff --git a/lib/index.js b/lib/index.js
 +*/
 +function installReasoningPolicy(ctx, config) {
 +	validateReasoningWatchConfig(config);
++	if (config.visibleStall !== false) validateVisibleStallConfig(config.visibleStall);
 +	if (!Number.isSafeInteger(config.maxRecoveries) || config.maxRecoveries < 0) throw new Error("reasoningLoop.maxRecoveries must be a non-negative safe integer");
 +	if (!Number.isSafeInteger(config.settlementBudget) || config.settlementBudget < 1) throw new Error("reasoningLoop.settlementBudget must be a positive safe integer");
 +	const recoveries = /* @__PURE__ */ new WeakMap();
@@ -340,8 +754,9 @@ diff --git a/lib/index.js b/lib/index.js
 +		return new ReasoningOutputPolicy(config, (reason) => {
 +			if (reason === "settlement-limit") return { failure: {
 +				code: "TOOL_SETTLEMENT_LIMIT",
-+				message: "Output after a tool call exceeded the local settlement budget before finishing. No tools from this call were dispatched."
++				message: SETTLEMENT_FAILURE
 +			} };
++			const visible = reason === "visible-repetition";
 +			const previous = recoveries.get(call.agent);
 +			const count = previous?.turn === call.turn ? previous.count : 0;
 +			recoveries.set(call.agent, {
@@ -351,20 +766,26 @@ diff --git a/lib/index.js b/lib/index.js
 +			const continuation = !active || count >= config.maxRecoveries ? void 0 : createUserMessage({
 +				content: [{
 +					type: "text",
-+					text: RECOVERY_PROMPT
++					text: visible ? VISIBLE_RECOVERY_PROMPT : RECOVERY_PROMPT
 +				}],
-+				source: { kind: "reasoning-loop-recovery" }
++				source: {
++					kind: "reasoning-loop-recovery",
++					turn: call.turn,
++					step: call.step,
++					attempt: count + 1,
++					limit: config.maxRecoveries
++				}
 +			});
 +			return {
 +				failure: {
 +					code: "REASONING_LOOP",
-+					message: "Reasoning output was interrupted after sustained exact-copy repetition."
++					message: visible ? VISIBLE_REPETITION_FAILURE : REPETITION_FAILURE
 +				},
 +				get continuation() {
 +					return active ? continuation : void 0;
 +				}
 +			};
-+		});
++		}, () => active);
 +	});
 +}
 +//#endregion
@@ -386,7 +807,7 @@ diff --git a/lib/index.js b/lib/index.js
  	thresholds: z.array(z.number()).default([
  		3,
  		5,
-@@ -2200,6 +2541,7 @@
+@@ -2200,6 +2962,7 @@
  * @param config - validated {@link Config}; `thresholds` is re-checked fail-loud here.
  */
  function apply(ctx, config) {
@@ -394,7 +815,6 @@ diff --git a/lib/index.js b/lib/index.js
  	const thresholds = validateThresholds(config.thresholds);
  	const thresholdSet = new Set(thresholds);
  	const includePatterns = config.include.map(wildcardToRegExp);
-
 diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
@@ -426,27 +846,47 @@ diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
      /** Consecutive-repeat counts that trigger a reminder (default `[3, 5, 8]`). */
      thresholds?: number[];
      /** Tool-name patterns to track; empty means every tool is tracked. */
-
 diff --git a/lib/types/reasoning-policy.d.ts b/lib/types/reasoning-policy.d.ts
 new file mode 100644
 --- /dev/null
 +++ b/lib/types/reasoning-policy.d.ts
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,86 @@
 +/** Optional reasoning-copy policy, independent of advisory tool-call reminders. */
 +import type { Context } from '@deepseek-ai/cordis';
 +import z from '@deepseek-ai/schemastery';
 +import type { AssistantOutputInterruption, AssistantOutputItem, AssistantOutputPolicy } from '@deepseek-ai/dsh-agent';
 +import { type StreamChunk } from '@deepseek-ai/dsh-llm';
 +import { type ReasoningWatchConfig } from './reasoning-watch.ts';
++import { type VisibleStallConfig } from './visible-stall.ts';
 +declare module '@deepseek-ai/dsh-llm' {
 +    interface MessageSourceMap {
++        /**
++         * The continuation this guard injects after locally interrupting a
++         * reasoning call. It addresses the Step it continues, so a presentation
++         * consumer can place and count the recovery without re-deriving either
++         * fact from the surrounding window.
++         */
 +        'reasoning-loop-recovery': {
 +            kind: 'reasoning-loop-recovery';
++            /** Turn whose call was interrupted and continued. */
++            turn: number;
++            /** Step whose call was interrupted and continued. */
++            step: number;
++            /** One-based ordinal of this recovery among the Turn's recoveries. */
++            attempt: number;
++            /** Recoveries one Turn may start, as configured on this deployment. */
++            limit: number;
 +        };
 +    }
 +}
 +/** Explicit opt-in settings for editable-plain conversation-model output. */
 +export interface ReasoningLoopConfig extends ReasoningWatchConfig {
++    /**
++     * Visible-output stall, or `false` to filter only proven exact copies. A stall
++     * holds output that looks repetitive, so `maxWindowChars` bounds the characters
++     * withheld from the user and session at any moment.
++     */
++    visibleStall: false | VisibleStallConfig;
 +    /** Maximum locally interrupted calls resumed within one turn, including native child agents. */
 +    maxRecoveries: number;
 +    /** Post-tool settlement budget: each received event costs one plus its new delta's UTF-16 characters. */
@@ -454,6 +894,8 @@ new file mode 100644
 +}
 +/** Validated settings; omission at the owning plugin disables this policy entirely. */
 +export declare const ReasoningLoopConfig: z<ReasoningLoopConfig>;
++/** Why the policy ended a call locally. */
++type ReasoningStopReason = 'repetition' | 'visible-repetition' | 'settlement-limit';
 +/**
 + * Filter one reasoning block without retaining another complete copy of its text.
 + * Interleaved non-reasoning events release unresolved text before passing through.
@@ -462,16 +904,30 @@ new file mode 100644
 + */
 +export declare class ReasoningOutputPolicy implements AssistantOutputPolicy {
 +    private readonly interrupt;
++    /** Whether the owning plugin still authorizes this call's presentation. */
++    private readonly enabled;
 +    private readonly watch;
++    private readonly stall;
 +    private index;
 +    private closed;
 +    private localInterruption;
 +    private settlementLeft;
 +    private readonly settlementBudget;
-+    constructor(config: ReasoningLoopConfig, interrupt: (reason: 'repetition' | 'settlement-limit') => AssistantOutputInterruption);
++    constructor(config: ReasoningLoopConfig, interrupt: (reason: ReasoningStopReason) => AssistantOutputInterruption, 
++    /** Whether the owning plugin still authorizes this call's presentation. */
++    enabled: () => boolean);
 +    get interruption(): AssistantOutputInterruption | undefined;
 +    push(chunk: StreamChunk): readonly AssistantOutputItem[];
 +    flush(): readonly AssistantOutputItem[];
++    /**
++     * Gate one delta through the stall, then through exact-copy filtering. The stall
++     * sees every original character, so neither detector depends on delta
++     * boundaries. Text the stall withholds reaches the exact-copy filter when the
++     * stall releases it, and an interruption discards the withheld suffix instead.
++     */
++    private accept;
++    /** Announce each withholding transition this call made; a disposed policy announces nothing. */
++    private stageItems;
 +}
 +/**
 + * Register the optional per-call policy; all listeners and recovery state belong to this fiber.
@@ -479,14 +935,14 @@ new file mode 100644
 + * @param config - complete resolved settings, validated before registration.
 + */
 +export declare function installReasoningPolicy(ctx: Context, config: ReasoningLoopConfig): void;
++export {};
 +//# sourceMappingURL=reasoning-policy.d.ts.map
 \ No newline at end of file
-
 diff --git a/lib/types/reasoning-watch.d.ts b/lib/types/reasoning-watch.d.ts
 new file mode 100644
 --- /dev/null
 +++ b/lib/types/reasoning-watch.d.ts
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,91 @@
 +/** Bounded exact-copy evidence and tentative buffering for streamed reasoning. */
 +/** Deployment-selected detection, buffering, and delayed interruption budgets, in UTF-16 characters. */
 +export interface ReasoningWatchConfig {
@@ -556,6 +1012,18 @@ new file mode 100644
 +     */
 +    push(text: string): ReasoningWatchResult;
 +    /**
++     * Settle text that a caller withheld at a barrier, together with this watch's
++     * own unresolved text. Confirmed copies stay suppressed, and the arrival order
++     * of every character is preserved. A settle never starts a cancellation: the
++     * observation window for text withheld this long has passed, and a stop that
++     * can no longer abort the call would otherwise drop characters the caller
++     * still owes its own consumer.
++     * @param text - caller-withheld original text in arrival order.
++     * @returns accepted text in arrival order, with confirmed copies removed.
++     */
++    release(text: string): string;
++    private consume;
++    /**
 +     * Release only unresolved text at an ordering barrier or final settlement.
 +     * Confirmed copies have already been removed and can never be released.
 +     * @returns pending original text in arrival order.
@@ -566,4 +1034,138 @@ new file mode 100644
 +    private suppress;
 +}
 +//# sourceMappingURL=reasoning-watch.d.ts.map
+\ No newline at end of file
+diff --git a/lib/types/visible-stall.d.ts b/lib/types/visible-stall.d.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/types/visible-stall.d.ts
+@@ -0,0 +1,128 @@
++/**
++ * Adaptive visible-output stall for near-duplicate reasoning. Normal reasoning is
++ * released as it arrives; only after one observation qualifies does the stall
++ * withhold the following characters, and it either releases them verbatim or
++ * discards the withheld suffix when it interrupts. It never rewrites or removes
++ * characters it already released.
++ */
++/** Largest observation window and held suffix this stall may retain, whatever the configuration says. */
++export declare const visibleStallRetentionCeiling = 8192;
++/** Deployment-selected observation, retention, and confirmation budgets, in UTF-16 characters. */
++export interface VisibleStallConfig {
++    /** Initial observation window; output is released as it arrives until one observation qualifies. */
++    windowChars: number;
++    /** Ceiling for the expanding observation window and therefore for the held suffix. */
++    maxWindowChars: number;
++    /** Observation cadence in observed characters, independent of provider delta boundaries. */
++    scanChars: number;
++    /** Minimum complete sentence units inside one observation. */
++    minUnits: number;
++    /** Minimum fraction of units whose trimmed text also occurs elsewhere in the observation. */
++    unitShare: number;
++    /**
++     * Minimum fraction of sentence characters inside recurring sentences. A
++     * recurring interjection alone cannot qualify an observation whose content
++     * keeps arriving as new sentences, so this is the evidence that recurring
++     * sentences carry real mass rather than filler.
++     */
++    unitCharShare: number;
++    /** Length of the exact fragments that measure reused characters. */
++    shingleChars: number;
++    /** Minimum fraction of observation characters inside a fragment repeated at least `shingleChars * 2` away. */
++    shingleShare: number;
++    /** Consecutive qualifying observations that confirm repetition and discard the held suffix. */
++    confirmWindows: number;
++    /** Consecutive non-qualifying observations that release the held suffix verbatim. */
++    recoveryWindows: number;
++}
++/** Defaults materialized by the owning plugin's configuration schema. */
++export declare const visibleStallDefaults: VisibleStallConfig;
++/**
++ * Reject settings that would defeat the bounded, majority-evidence contract.
++ * @param config - deployment-selected complete budgets.
++ * @throws when a count is not a positive safe integer, the window exceeds {@link visibleStallRetentionCeiling}, or a share is not a majority below one.
++ */
++export declare function validateVisibleStallConfig(config: VisibleStallConfig): void;
++/** One withholding transition this stall made while consuming a character. */
++export type VisibleStallStage = 
++/** Observation began withholding output to check it. */
++'suspected'
++/** Observation stopped qualifying, so the withheld output was released. */
++ | 'released'
++/** A barrier released the withheld output without judging it (fence or explicit flush). */
++ | 'barrier';
++/** One stall decision for one original character. */
++export interface VisibleStallResult {
++    /** Original text released now, in arrival order; empty while the stall withholds. */
++    text: string;
++    /** Whether the held suffix was discarded because repetition was confirmed. */
++    interrupt: boolean;
++    /** Withholding transition this character caused; absent while the withholding state is unchanged. */
++    transition?: VisibleStallStage;
++}
++/**
++ * Stop-only stall over one reasoning block's original characters. Detection uses
++ * sentence recurrence in a rolling window plus the fraction of characters
++ * inside locally repeated fragments; evidence never rewrites text, and every
++ * released character leaves the stall exactly once. Fenced code suspends
++ * detection so example scaffolding is not mistaken for repeated prose.
++ */
++export declare class VisibleStallWatch {
++    private readonly config;
++    private raw;
++    private pendingChars;
++    private received;
++    private capacity;
++    private holding;
++    private high;
++    private low;
++    private stopped;
++    private protected;
++    private fence;
++    private line;
++    /** Set only while a fence transition releases, so the release reports its real cause. */
++    private releasedByFence;
++    constructor(config: VisibleStallConfig);
++    /**
++     * Characters retained independently of every caller-owned string. The withheld
++     * suffix is a suffix of this buffer, so the complete retention is one window.
++     */
++    get retainedChars(): number;
++    /** Current observation window, which expands toward the configured ceiling while withholding. */
++    get windowChars(): number;
++    /** Characters currently withheld from the caller. */
++    get heldChars(): number;
++    /**
++     * Disable cancellation after a complete protocol tool block. Withholding keeps
++     * working; a confirmed observation then releases instead of discarding, because
++     * unfinished tool output belongs to the settlement budget, not to this stall.
++     */
++    protectCommit(): void;
++    /**
++     * Release every unresolved character at an output barrier or final settlement.
++     * @returns withheld original text in arrival order; empty after an interruption, whose suffix is already gone.
++     */
++    flush(): string;
++    /**
++     * Consume one original character in arrival order.
++     * @param char - exactly one character of unmodified reasoning output.
++     * @returns the text released for this character, whether the held suffix was
++     * discarded, and the withholding transition this character caused.
++     */
++    push(char: string): VisibleStallResult;
++    /** One character through the detector; `push` adds the withholding transition around it. */
++    private step;
++    /** Take the withheld suffix out of the observation window, in arrival order. */
++    private releaseHeld;
++    /** Drop the observation window; a barrier is not evidence about the text after it. */
++    private resetObservation;
++    /** Whether the current observation shows repeated sentences over reused characters. */
++    private qualifies;
++    /**
++     * Track fenced-code delimiters from the bounded line prefix.
++     * @param char - the character just received.
++     * @returns `open` or `close` when this character completed a fence line, otherwise `undefined`.
++     */
++    private scanFenceLine;
++}
++//# sourceMappingURL=visible-stall.d.ts.map
 \ No newline at end of file

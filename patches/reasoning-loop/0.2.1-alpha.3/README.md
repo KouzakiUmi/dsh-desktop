@@ -4,14 +4,14 @@ These are reviewable, unapplied runtime patches for `@deepseek-ai/dsh-*` version
 
 ## Contents
 
-Seven package patches cover LLM capabilities and canonical blocks, Agent policy types, Agent Loop call-scoped interruption/recovery, Session prefix semantics, the opt-in repeat-tool-reminder reasoning policy, native DeepSeek opaque capability, and explicit pi-ai plain mode. `reasoning-loop-patches.json` records each input archive, patch, and changed output file's SHA-256.
+Twelve package patches cover LLM capabilities and canonical blocks, Agent policy types, Agent Loop call-scoped interruption/recovery with its pre-cleanup failure publication and live detection stages, Session prefix semantics, the opt-in repeat-tool-reminder reasoning policy with its visible-output stall, withholding stages, and recorded recovery Step/ordinal/limit, native DeepSeek opaque capability, explicit pi-ai plain mode, the Chat client bundle that presents detection stages, the retained prefix, and the recovery notice, the Host Session bridge and its wire baseline, the Trajectory and Inspector client bundles that consume the live rows, and the Headless terminal bundle. `reasoning-loop-patches.json` records each input archive, patch, and changed output file's SHA-256; 41 compiled runtime files carry a patch, including the added `lib/types/visible-stall.d.ts` and `lib/types/client/chat/RecoveryNotice.d.ts`. Candidates and the active root patches are byte-identical: the exporter emits no separator line between file diffs.
 
 Tests, SDK fixtures, persistence acknowledgements, ADRs, and the narrow Windows snapshot support fixes remain in the independent Core source checkout; they are not production runtime patches. This bundle does not modify the pinned Desktop submodule, claim an uncommitted change as an upstream commit, or change Session format version 4.
 
 ## Verified
 
 - Patch exporter isolated tests and NEXT type checking.
-- All seven archive/patch/output fingerprints checked against the frozen built Core files.
+- All twelve archive/patch/output fingerprints checked against the frozen built Core files.
 - Every patch checked by `git apply --check` against an isolated copy of its exact baseline package archive.
 - Targeted source-level reasoning, interruption/recovery, tools, and native-child tests.
 - Real Loader headless and SDK keyless replay, with notifications and final-result goldens present.

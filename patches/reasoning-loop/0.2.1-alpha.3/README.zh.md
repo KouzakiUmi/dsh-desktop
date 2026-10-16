@@ -4,14 +4,14 @@
 
 ## 内容
 
-七个包分别覆盖 LLM 能力与规范化内容块、Agent 策略类型、Agent Loop 单调用中断及恢复、Session 前缀语义、repeat-tool-reminder 的可选思考策略、原生 DeepSeek opaque 能力和显式 pi-ai plain 模式。`reasoning-loop-patches.json` 记录每个输入归档、补丁及变更后文件的 SHA-256。
+十二个包分别覆盖 LLM 能力与规范化内容块、Agent 策略类型、Agent Loop 单调用中断及恢复（含清理前的失败发布与实时检测阶段）、Session 前缀语义、repeat-tool-reminder 的可选思考策略及其可见停滞、缓冲阶段与已记录的续跑 Step／序号／上限、原生 DeepSeek opaque 能力、显式 pi-ai plain 模式、负责展示检测阶段／保留前缀／恢复提示的 Chat 客户端 bundle、Host 会话桥与其 wire baseline、消费实时行的 Trajectory 与 Inspector 客户端 bundle，以及 Headless 终端 bundle。`reasoning-loop-patches.json` 记录每个输入归档、补丁及变更后文件的 SHA-256，共 41 个已编译运行文件被补丁覆盖，含新增的 `lib/types/visible-stall.d.ts` 与 `lib/types/client/chat/RecoveryNotice.d.ts`。候选补丁与 root 有效补丁逐字节一致：导出器不再在文件 diff 之间插入分隔空行。
 
 测试、SDK 夹具、持久类型确认、ADR 和窄范围 Windows 快照支持修复保留在独立 Core 源码工作区，不属于生产运行包补丁。本补丁集不修改 Desktop 固定子模块，不把未提交改动冒充上游提交，也不改变 Session 格式版本 4。
 
 ## 已验证
 
 - 补丁导出器隔离测试及 NEXT 类型检查。
-- 七个包的归档／补丁／输出指纹均与冻结的 Core 构建文件一致。
+- 十二个包的归档／补丁／输出指纹均与冻结的 Core 构建文件一致。
 - 每个补丁均对精确基线包的隔离副本执行 `git apply --check`。
 - 源码层重复抑制、中断／恢复、工具和原生子代理定向测试。
 - 真实 Loader headless 与 SDK keyless 重放，且存在 notifications 及最终 result 的 golden 断言。

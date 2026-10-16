@@ -108,7 +108,7 @@ it('joins multi-file patches without uncounted context lines between diffs', () 
   expect(result.patch).not.toContain('\n\ndiff --git ')
 })
 
-it('installs the seven exact reasoning-loop outputs through the active vendored patch cohort', () => {
+it('installs the twelve exact reasoning-loop outputs through the active vendored patch cohort', () => {
   interface Cohort {
     baseline: { version: string; commit: string }
     packages: { package: string; filename: string; archive: string; patchSha256: string; files: { path: string; afterSha256: string }[] }[]
@@ -118,7 +118,7 @@ it('installs the seven exact reasoning-loop outputs through the active vendored 
   const cohort = JSON.parse(readFileSync(join(candidateRoot, 'reasoning-loop-patches.json'), 'utf8')) as Cohort
   const manifest = JSON.parse(readFileSync(join(desktop, 'package.json'), 'utf8'))
   const require = createRequire(import.meta.url)
-  expect(cohort.packages).toHaveLength(7)
+  expect(cohort.packages).toHaveLength(12)
   for (const entry of cohort.packages) {
     const candidate = readFileSync(join(candidateRoot, entry.filename))
     expect(sha256(candidate)).toBe(entry.patchSha256)

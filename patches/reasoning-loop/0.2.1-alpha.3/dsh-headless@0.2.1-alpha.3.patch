@@ -1,0 +1,11 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -160,6 +160,7 @@
+ 			close();
+ 			return;
+ 		}
++		if (frame.type === "stage") return;
+ 		const chunk = frame.chunk;
+ 		switch (chunk.type) {
+ 			case "reasoning-delta":

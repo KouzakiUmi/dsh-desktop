@@ -1,25 +1,49 @@
 diff --git a/lib/index.js b/lib/index.js
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -392,6 +392,17 @@
+@@ -392,6 +392,41 @@
  			step: this.step
  		});
  	}
 +	/**
-+	* Commit one filtered item; reasoning closes use the same accepted text as live deltas.
-+	* @param item - accepted provider chunk or canonical reasoning-close directive.
++	* Commit one filtered item; reasoning closes use the same accepted text as live
++	* deltas, and a detection stage is published without entering this attempt's
++	* durable stream, assembled message, or any model request.
++	* @param item - accepted provider chunk, reasoning-close directive, or detection stage.
 +	*/
 +	accept(item) {
++		if (item.type === "reasoning-stall") {
++			this.stage(item.stage, item.index);
++			return;
++		}
 +		this.push(item.type === "accepted-reasoning-end" ? {
 +			type: "block-end",
 +			index: item.index,
 +			block: this.assembler.acceptedReasoning(item.index)
 +		} : item);
 +	}
++	/**
++	* Publish one withholding transition of this attempt. The frame is
++	* process-local presentation: it never reaches the durable stream.
++	* @param stage - transition the output policy made.
++	* @param index - original provider block index the stage describes.
++	*/
++	stage(stage, index) {
++		if (this.terminal) return;
++		this.emit({
++			type: "stage",
++			attemptId: this.attemptId,
++			revision: this.nextRevision(),
++			turn: this.turn,
++			step: this.step,
++			stage,
++			index
++		});
++	}
  	/** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
  	push(chunk) {
  		const timed = this.accumulator.push({
-@@ -1072,28 +1083,69 @@
+@@ -1072,28 +1107,72 @@
  			} else this.session.append("user/message", message, { surfaceOp: "append" });
  			if (context !== void 0 && !contextAdmitted) this.session.append("user/message", context, { surfaceOp: "append" });
  			firstAttempt = false;
@@ -65,6 +89,13 @@ diff --git a/lib/index.js b/lib/index.js
 +									decision,
 +									error
 +								};
++								if (!signal.aborted) live.push({
++									type: "finish",
++									reason: {
++										kind: "error",
++										failure
++									}
++								});
 +								callAbort?.abort(error);
 +								break;
 +							}
@@ -82,19 +113,15 @@ diff --git a/lib/index.js b/lib/index.js
  				if (!started) throw error;
  				try {
 -					if (signal.aborted) {
-+					for (const accepted of outputPolicy?.flush() ?? []) live.accept(accepted);
-+					if (localInterruption !== void 0 && !signal.aborted) live.push({
-+						type: "finish",
-+						reason: {
-+							kind: "error",
-+							failure: localInterruption.decision.failure
-+						}
-+					});
++					for (const accepted of outputPolicy?.flush() ?? []) {
++						if (accepted.type === "reasoning-stall" && signal.aborted) continue;
++						live.accept(accepted);
++					}
 +					if (signal.aborted || localInterruption !== void 0 && error === localInterruption.error) {
  						const content = live.interruptedBlocks();
  						if (content.length > 0) live.settle("assistant/message", () => this.session.append("assistant/message", {
  							turn,
-@@ -1123,6 +1175,16 @@
+@@ -1123,6 +1202,16 @@
  				} catch (settlementError) {
  					throw new AggregateError([error, settlementError], "Assistant stream failed and its durable settlement was rejected", { cause: error });
  				}
@@ -118,19 +145,28 @@ diff --git a/lib/types/assistant-stream.d.ts b/lib/types/assistant-stream.d.ts
  /** Process-local assistant attempt framing and durable stream accumulation. */
  import { LlmAttemptId, type ContentBlock, type FinishReason, type ReplayEnvelope, type StreamChunk, type TokenUsage } from '@deepseek-ai/dsh-llm';
 -import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
-+import type { AssistantOutputItem, AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
++import type { AssistantOutputItem, AssistantOutputStage, AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
  import type { SessionEventMap, SessionId, SessionSeq } from '@deepseek-ai/dsh-session';
  /** Folds one model attempt into one compact stream plus ordered transient frames. */
  export declare class AssistantStreamAttempt {
-@@ -27,6 +27,11 @@
+@@ -27,6 +27,20 @@
      constructor(sessionId: SessionId, attempt: number, nextRevision: () => number, turn: number, step: number, emit: (frame: AssistantStreamFrame) => void);
      /** Publish the opening marker before the first delivered chunk. */
      start(): void;
 +    /**
-+     * Commit one filtered item; reasoning closes use the same accepted text as live deltas.
-+     * @param item - accepted provider chunk or canonical reasoning-close directive.
++     * Commit one filtered item; reasoning closes use the same accepted text as live
++     * deltas, and a detection stage is published without entering this attempt's
++     * durable stream, assembled message, or any model request.
++     * @param item - accepted provider chunk, reasoning-close directive, or detection stage.
 +     */
 +    accept(item: AssistantOutputItem): void;
++    /**
++     * Publish one withholding transition of this attempt. The frame is
++     * process-local presentation: it never reaches the durable stream.
++     * @param stage - transition the output policy made.
++     * @param index - original provider block index the stage describes.
++     */
++    stage(stage: AssistantOutputStage, index: number): void;
      /** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
      push(chunk: StreamChunk): void;
      /**

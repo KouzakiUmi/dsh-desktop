@@ -43,7 +43,7 @@ node scripts/reasoning-loop-patches.mjs --core-root <已构建的独立-Core-工
 corepack yarn workspace dsh-desktop-next verify:reasoning-loop
 ```
 
-校验检查七包版本、14 个 resolutions、候选及有效补丁对应关系、已安装发布文件的 SHA-256，并覆盖导出器与 Git 可应用性。构建不从本机 Core 路径重新生成补丁；输入是仓库中的版本化补丁、清单、vendored 归档与锁文件。升级 Core 时需重新评审并更新整组输入，不能绕过失败继续打包。
+校验检查十二包版本、24 个 resolutions、候选及有效补丁对应关系、已安装发布文件的 SHA-256，并覆盖导出器与 Git 可应用性。构建不从本机 Core 路径重新生成补丁；输入是仓库中的版本化补丁、清单、vendored 归档与锁文件。升级 Core 时需重新评审并更新整组输入，不能绕过失败继续打包。
 
 交付时须一起提交这些输入及校验测试／导出器；仅上传压缩包不会接入构建。现有 CI 构建 Windows 安装包但不发布。打包包含守卫能力不等于默认启用：`reasoningLoop` 与适配器 plain 模式仍需显式选择，不自动改写用户 Profile。
 
@@ -51,4 +51,4 @@ corepack yarn workspace dsh-desktop-next verify:reasoning-loop
 
 验收包括正常长推理、无换行／短句重排循环、标识符与否定词变化、巨型增量分包一致性、短暂重复后工具成功、长循环终止、完整块回灌、签名拒绝、清理失败、普通 always 重试隔离，以及原生子代理父级取消时不复活。可见行为需要真实 Loader 组合与 keyless 会话快照；wire 投影使用本地假服务检查，不等同真实模型验证。
 
-Core 源码实现与定向验证已完成，包含重复抑制、恢复、原生子代理、会话读者及真实 Loader／SDK 的 keyless 快照。NEXT 补丁导出器通过隔离测试与类型检查，七个候选包的补丁通过精确归档指纹及独立 Git 可应用性检查，记录见 [补丁清单](../patches/reasoning-loop/0.2.1-alpha.3/reasoning-loop-patches.json)。七包现已提升为 root `patches/<package>@<version>.patch`，通过 14 个版本精确／范围 selector 的 Yarn `patch:file` resolutions 和锁文件安装到本地依赖树；21 个运行文件与清单的输出摘要全部一致。原候选归档保持不变，有效补丁仅去除文件 diff 间的额外空白分隔行，以通过 Yarn 严格 hunk 校验；导出器和回归测试同步修正。守卫仍须显式配置启用，用户 Profile 和现用应用均未修改。真实 DS 大上下文行为、阈值准确率和守卫的成品启用效果仍需独立验证，不能由静态代码或合成样本推定。
+Core 源码实现与定向验证已完成，包含重复抑制、恢复、原生子代理、会话读者及真实 Loader／SDK 的 keyless 快照。本轮按验收修正后重新导出：可见停滞改为每字符硬上限（`maxWindowChars`，到达上限时以当前证据决定中断或释放）、新增复现句子字符质量门槛（`unitCharShare`，使仅反复出现的口头填充词无法单独触发判定）并让围栏代码暂停检测；实测局限随之记录：在依据的录制会话中，106 条超过 2,000 字符的推理块有 7 条越过阈值，其中一条在阈值之后仍重复约 4,000 字符才自行恢复。NEXT 补丁导出器通过隔离测试与类型检查，十二个候选包的补丁通过精确归档指纹及独立 Git 可应用性检查，记录见 [补丁清单](../patches/reasoning-loop/0.2.1-alpha.3/reasoning-loop-patches.json)。十二包现已提升为 root `patches/<package>@<version>.patch`，通过 24 个版本精确／范围 selector 的 Yarn `patch:file` resolutions 和锁文件安装到本地依赖树；41 个运行文件与清单的输出摘要全部一致。本轮把 Chat 客户端 bundle 与新增实时检测阶段的全部消费方纳入候选集：循环在提供方清理前发布策略失败，guard 在每个 episode 仅一次地报告真实缓冲迁移（疑似／放行／屏障）且不进入模型输出，Chat 行保留已交付前缀、显示续跑序号与 Turn 上限，不会把正在续跑的 Step 呈现为已停止，Host 桥在重连时复原当前 live 阶段。候选补丁与 root 有效补丁逐字节一致，导出器不再在文件 diff 之间插入分隔空行。守卫仍须显式配置启用，用户 Profile 和现用应用均未修改。真实 DS 大上下文行为、阈值准确率和守卫的成品启用效果仍需独立验证，不能由静态代码或合成样本推定。
