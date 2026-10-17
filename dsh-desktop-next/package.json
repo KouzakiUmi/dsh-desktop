@@ -146,6 +146,7 @@
     "@deepseek-ai/dsh-ptc-runtime": "0.2.1-rc.2",
     "@deepseek-ai/dsh-pwsh-local": "0.2.1-rc.2",
     "@deepseek-ai/dsh-pwsh-sandbox": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-repeat-tool-reminder": "0.2.1-rc.2",
     "@deepseek-ai/dsh-sandbox": "0.2.1-rc.2",
     "@deepseek-ai/dsh-sandbox-local": "0.2.1-rc.2",
     "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.2",

@@ -32,7 +32,7 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 | ASAR 自身包解析 | [Host 自身包解析](<../dsh-desktop-next/src/host/own-package.ts>) 只把安装包自己已声明的 file/default exports 映射为包内 URL；其它包仍走既有链，不复制应用到 Profile、不导出私有子路径。源码目录能被普通 Node 找到不能替代真实封装 Host 验证。 |
 | AA 桥接 | [Connector 补丁](<../patches/agents-anywhere-connector-httpx.patch>) 保留子进程 httpx 的裸 IPv6 bypass、父环境隔离、Connector 日志与 JSON 传输后一致的内容哈希。[AA policy](<../scripts/agents-anywhere-release-policy.mjs>) 统一维护五个 runtime peers，包含 Cordis/Schemastery；不要再在补丁里硬编码另一套旧 peer 范围。当前 Gateway 的事件订阅和回复必须使用同一个受 Context 生命周期管理的真实 Peer，不能传 undefined、借用浏览器 Peer 或靠函数 arity 猜测兼容。 |
 
-| 循环 CoT 守卫运行实现 | 该实现与其运行文件随维护 Core 提交进入 vendored 运行时，不再以版本绑定补丁补齐。不恢复十二包候选／root 补丁、导出器及其校验入口；升级 Core 时按第 4 节推进 pin、manifest 与锁文件。 |
+| 循环 CoT 守卫运行实现 | 该实现与其运行文件随维护 Core 提交进入 vendored 运行时，不再以版本绑定补丁补齐。维护 Core 仍保留该包供 Python 运行时闭包与 `snapshots/sdk/reasoning-loop-recovery` 使用，但其 `dsh` 基础组合不再默认挂载它（本地 Core 差异）；DSH NEXT 通过 [cordis.patch.yml](<../dsh-desktop-next/cordis.patch.yml>) 显式挂载随包运行时中的 `@deepseek-ai/dsh-repeat-tool-reminder`，组件由产品组合显式选择。不恢复十二包候选／root 补丁、导出器及其校验入口；升级 Core 时按第 4 节推进 pin、manifest 与锁文件。 |
 
 升级依赖以当前同主版本安全修复为优先；必须区分生产图、开发图、临时 AA staging 图和已打包客户端代码。当前交付图中的 extract-zip 2.0.1 仍有 [GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) 与 [GHSA-7pqw-9j4j-h8q3](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3)：调用面防护不等于公告消失。不要排除包、忽略 advisory 或把弃用提示混同为漏洞清零。
 
