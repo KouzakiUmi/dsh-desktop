@@ -26,7 +26,7 @@ function fixture(t, desktopVersion = version) {
     write(path, data)
   }
   const runtimePeers = Object.fromEntries(AA_PEERS.map(name => [name,
-    name === '@deepseek-ai/cordis' ? '4.0.5-alpha.2' : name === '@deepseek-ai/schemastery' ? '^3.18.5-alpha.2' : '0.2.1-alpha.4']))
+    name === '@deepseek-ai/cordis' ? '4.0.5' : name === '@deepseek-ai/schemastery' ? '^3.18.5' : '0.2.1-rc.2']))
   write('package.json', { resolutions: { [AA_PACKAGE]: aaConnectorResolution(artifact) } })
   for (const [index, workspace] of AA_WORKSPACES.entries()) {
     write(`${workspace}/package.json`, {

@@ -8,8 +8,8 @@
 
 | 范围 | 当前约束与权威记录 |
 | --- | --- |
-| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前已推送基线为 [fcd4609c02](https://github.com/KouzakiUmi/deepseek-harness/commit/fcd4609c0289c1f38cb063959588143ca58a2926)。 |
-| Desktop pin 与包来源 | [upstream.json](<../upstream.json>)、[子模块配置](<../.gitmodules>)、[runtime manifest](<../vendor/dsh-runtime/0.2.1-alpha.4/manifest.json>) 必须指向同一维护 Core 提交；包版本号相同不能代替来源提交与校验和。 |
+| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前维护基线为 [fd55da1b3a](https://github.com/KouzakiUmi/deepseek-harness/commit/fd55da1b3a1a56d926a3697df8a6f8011ec49751)（本地提交，尚未推送）；上一个已推送基线为 [fcd4609c02](https://github.com/KouzakiUmi/deepseek-harness/commit/fcd4609c0289c1f38cb063959588143ca58a2926)。 |
+| Desktop pin 与包来源 | [upstream.json](<../upstream.json>)、[子模块配置](<../.gitmodules>)、[runtime manifest](<../vendor/dsh-runtime/0.2.1-rc.2/manifest.json>) 必须指向同一维护 Core 提交；包版本号相同不能代替来源提交与校验和。 |
 | NEXT | 仅 Windows x64。窗口、终端、更新、权限、打包、解释器载荷和图标由 NEXT 维护，不重新引入其它平台入口。 |
 | 借用实现 | [upstream-reference.json](<../dsh-desktop-next/upstream-reference.json>) 记录上游文件及原始 SHA-256；它不是本地适配文件必须等于上游的声明。逐文件合并，不整目录覆盖本地 Windows 适配。 |
 | 包管理 | 外层 Yarn 4.18.0 与子模块 pnpm 分离。外层 [架构配置](<../.yarnrc.yml>) 只安装 win32/x64 可选依赖；不能靠删除 Core 的其它平台源码来瘦身。 |
@@ -22,7 +22,7 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 | 差异 | 保留的行为与核对位置 |
 | --- | --- |
 | pi-ai 1.3.0 精简适配 | [Yarn 补丁](<../patches/pi-ai@1.3.0.patch>) 在六个 provider 模块中删除七行 delta 阶段的重复部分 JSON 解析；保留参数文本累积及完成阶段解析。Core 的 pnpm 补丁与此保持语义一致。不要带回 0.87 分支或 1.1 时代的大块兼容覆盖。用 `yarn why @earendil-works/pi-ai` 核对实际只有目标版本及目标补丁。 |
-| 美元价格与公式 | [Core currencyAwareMath](https://github.com/KouzakiUmi/deepseek-harness/blob/fcd4609c0289c1f38cb063959588143ca58a2926/packages/client/ui-primitives/src/markdown/currencyAwareMath.ts) 与对应 parser、单测、真实消息渲染测试一并保留。价格、CJK、`between $5 and $10 (see $x$)` 不应吞成公式；`$x$`、`$2+2$`、带合法 padding 的公式及块公式仍须可用。不能以禁用数学渲染替代修复。 |
+| 美元价格与公式 | [Core currencyAwareMath](https://github.com/KouzakiUmi/deepseek-harness/blob/fd55da1b3a1a56d926a3697df8a6f8011ec49751/packages/client/ui-primitives/src/markdown/currencyAwareMath.ts) 与对应 parser、单测、真实消息渲染测试一并保留。价格、CJK、`between $5 and $10 (see $x$)` 不应吞成公式；`$x$`、`$2+2$`、带合法 padding 的公式及块公式仍须可用。不能以禁用数学渲染替代修复。 |
 | ZIP 调用面安全 | Windows Node、Python wheel 等下载解压前校验归档来源与摘要，并在 entry 回调拒绝 symlink、设备及其它特殊 Unix 文件类型。Unix mode 位是归档安全元数据，不是可删的 macOS/Linux 产品支持代码。保留真正恶意 ZIP 的负向测试。 |
 | 目录别名安全清理 | [disposable-tree.ts](<../dsh-desktop-next/adopted/src/disposable-tree.ts>) 不只信任 `lstat().isSymbolicLink()`：用 native realpath 比较条目和其真实父目录下的预期位置；目录别名只移除入口，不递归目标。普通 realpath 不能替代 native 版本；Windows 比较使用 `path.relative` 的大小写语义。 |
 | 更新 UX 与退出握手 | [updates.ts](<../dsh-desktop-next/src/updates.ts>) 保持错误可见、失败 cache 初始化可重试、成功后不反复扫描；通知去重不等于自动安装。[installer.nsh](<../dsh-desktop-next/adopted/build/installer.nsh>) 保持可见安装和显式重启，per-machine 更新必须在 UAC 交接前等待旧应用退出，不得改回静默 `/S` 或只依赖提权内层检查。调用 `CHECK_APP_RUNNING` 包装宏初始化进程路径，不直接调用自定义检查；[builder 补丁](<../patches/app-builder-lib@26.15.7.patch>) 的一次声明守卫允许初始化阶段和安装 Section 重复展开，避免未知变量或重复声明。 |

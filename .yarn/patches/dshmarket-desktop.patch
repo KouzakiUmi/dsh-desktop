@@ -1,17 +1,8 @@
 diff --git a/client/client.js b/client/client.js
-index 20f5075..681c96c 100644
+index 0899487..d7dac70 100644
 --- a/client/client.js
 +++ b/client/client.js
-@@ -4759,7 +4759,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
- 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
- 				className: Market_module_css_default.banner,
- 				children: [
--					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconWarningOutline16, {
-+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconWarningOutlineRegular, {
- 						size: 14,
- 						className: Market_module_css_default.bannerIcon
- 					}),
-@@ -10907,7 +10907,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
+@@ -10903,7 +10903,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
  					return next;
  				});
  			}, []);
@@ -20,7 +11,7 @@ index 20f5075..681c96c 100644
  			const updatableNames = Object.keys(installed).filter((name) => name !== selfName && !effectiveDisabledSet.has(name) && isPluginUpdatable(name, String(installed[name]), updates[name], updatedNames));
  			const batchUpdatableNames = updatableNames.filter((name) => updates[name]?.restoreRequired !== true);
  			const ignoredUpdateSet = (0, react.useMemo)(() => new Set(ignoredUpdateNames), [ignoredUpdateNames]);
-@@ -12177,7 +12177,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
+@@ -12173,7 +12173,7 @@ window.__ModuleLoader__.load({ id: "dshmarket", factory: (require) => {
  										className: Market_module_css_default.titleActions,
  										children: [
  											(() => {

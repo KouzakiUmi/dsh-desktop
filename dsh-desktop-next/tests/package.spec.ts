@@ -16,7 +16,7 @@ it('declares every official optional bundle as a discoverable, version-aligned i
 
 it('packages Windows x64 only while keeping fuses and native inventory aligned with the adopted Windows flow', () => {
   const next = read('../package.json')
-  expect(next.version).toBe('2.0.18-next')
+  expect(next.version).toBe('2.0.19-next')
   expect(next.build.appId).toBe('ai.deepseek.dsh.desktop.next')
   expect(next.build.asar).toBe(true)
   // The only writable production targets are Windows x64; macOS, Linux and DMG carry no configuration.

@@ -3,10 +3,10 @@
   "activeChannel": "next",
   "channels": {
     "next": {
-      "commit": "fcd4609c0289c1f38cb063959588143ca58a2926",
-      "sourceVersion": "0.2.1-alpha.4",
-      "runtimePackageVersion": "0.2.1-alpha.4",
-      "runtimeSource": "vendor/dsh-runtime/0.2.1-alpha.4/manifest.json",
+      "commit": "fd55da1b3a1a56d926a3697df8a6f8011ec49751",
+      "sourceVersion": "0.2.1-rc.2",
+      "runtimePackageVersion": "0.2.1-rc.2",
+      "runtimeSource": "vendor/dsh-runtime/0.2.1-rc.2/manifest.json",
       "package": "dsh-desktop-next"
     }
   }
