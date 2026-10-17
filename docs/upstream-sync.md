@@ -8,7 +8,7 @@
 
 | 范围 | 当前约束与权威记录 |
 | --- | --- |
-| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前维护基线为 [fd55da1b3a](https://github.com/KouzakiUmi/deepseek-harness/commit/fd55da1b3a1a56d926a3697df8a6f8011ec49751)（本地提交，尚未推送）；上一个已推送基线为 [fcd4609c02](https://github.com/KouzakiUmi/deepseek-harness/commit/fcd4609c0289c1f38cb063959588143ca58a2926)。 |
+| Core | 保留上游多平台源码；在独立 Core 工作区维护补丁并提交，再推进 Desktop 子模块，不从 Desktop feature branch 修改子模块内的 tracked 源码。当前构建 pin 为 [fd55da1b3a](https://github.com/KouzakiUmi/deepseek-harness/commit/fd55da1b3a1a56d926a3697df8a6f8011ec49751)（0.2.1-rc.2 合并提交，本地，尚未推送）；其上另有文档修复提交 [416800f4c6](https://github.com/KouzakiUmi/deepseek-harness/commit/416800f4c6)（config-catalog 重生成，不改变运行时产物）。上一个已推送基线为 [fcd4609c02](https://github.com/KouzakiUmi/deepseek-harness/commit/fcd4609c0289c1f38cb063959588143ca58a2926)。 |
 | Desktop pin 与包来源 | [upstream.json](<../upstream.json>)、[子模块配置](<../.gitmodules>)、[runtime manifest](<../vendor/dsh-runtime/0.2.1-rc.2/manifest.json>) 必须指向同一维护 Core 提交；包版本号相同不能代替来源提交与校验和。 |
 | NEXT | 仅 Windows x64。窗口、终端、更新、权限、打包、解释器载荷和图标由 NEXT 维护，不重新引入其它平台入口。 |
 | 借用实现 | [upstream-reference.json](<../dsh-desktop-next/upstream-reference.json>) 记录上游文件及原始 SHA-256；它不是本地适配文件必须等于上游的声明。逐文件合并，不整目录覆盖本地 Windows 适配。 |
