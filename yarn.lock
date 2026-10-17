@@ -10225,6 +10225,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dshmarket@patch:dshmarket@npm%3A1.66.35#./.yarn/patches/dshmarket-desktop.patch::locator=deepseek-harness-desktop%40workspace%3A.":
+  version: 1.66.35
+  resolution: "dshmarket@patch:dshmarket@npm%3A1.66.35#./.yarn/patches/dshmarket-desktop.patch::version=1.66.35&hash=f39479&locator=deepseek-harness-desktop%40workspace%3A."
+  dependencies:
+    js-yaml: "npm:^4.3.2"
+    undici: "npm:^7.29.1"
+  peerDependencies:
+    "@deepseek-ai/cordis": ^4.0.1
+    "@deepseek-ai/dsh-settings": ^0.1.0-rc.7 || ^0.1.1-rc.2 || ^0.1.2-alpha.2 || ^0.2.0-rc.1 || ^0.2.1-alpha.3 || ^0.2.1-rc.1
+    "@deepseek-ai/schemastery": ^3.18.1
+  peerDependenciesMeta:
+    "@deepseek-ai/dsh-settings":
+      optional: true
+    "@deepseek-ai/schemastery":
+      optional: true
+  checksum: 10c0/f6af3ea36d868da718e260a8586620e93eac45f996ee17eab3c140dd7d218dd491bd7a84976d29b37e605c3588e269b74a81e500f423afd9aa5cc0c15aa4042c
+  languageName: node
+  linkType: hard
+
 "dts-resolver@npm:^3.0.0":
   version: 3.0.0
   resolution: "dts-resolver@npm:3.0.0"
