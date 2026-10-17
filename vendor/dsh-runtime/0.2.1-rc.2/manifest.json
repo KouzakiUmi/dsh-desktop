@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "repository": "https://github.com/KouzakiUmi/deepseek-harness.git",
-  "commit": "fd55da1b3a1a56d926a3697df8a6f8011ec49751",
+  "commit": "557c9d8f98b2ff4de429257e38db24b713242e6f",
   "version": "0.2.1-rc.2",
   "buildProfile": "official",
   "packages": [
@@ -737,8 +737,8 @@
       "name": "@deepseek-ai/dsh-repeat-tool-reminder",
       "version": "0.2.1-rc.2",
       "filename": "deepseek-ai-dsh-repeat-tool-reminder-0.2.1-rc.2.tgz",
-      "size": 55476,
-      "sha256": "2b2a2f27c498ec2ce20f7da80657dc337080a905f70a95ca7ea84da3bd8231a0"
+      "size": 56980,
+      "sha256": "c54d6e7d6fe8e7aa2776891167252da39b573d8a437c610917f2a57e51903ca5"
     },
     {
       "name": "@deepseek-ai/dsh-win32-process",
@@ -1591,8 +1591,8 @@
       "name": "@deepseek-ai/dsh-client-modules",
       "version": "0.2.1-rc.2",
       "filename": "deepseek-ai-dsh-client-modules-0.2.1-rc.2.tgz",
-      "size": 53506,
-      "sha256": "064b707cf043a735942e60fa2ea6f4f77bdc6fb1f878910c232839c69e0808e9"
+      "size": 53507,
+      "sha256": "86cd27ea93b732627bc24e49390a0f0de96bd0ef2d4f110dfcb09cd765863b18"
     },
     {
       "name": "@deepseek-ai/dsh-client-product-analytics",
@@ -1878,8 +1878,8 @@
       "name": "@deepseek-ai/dsh-client-ui-sidebar",
       "version": "0.2.1-rc.2",
       "filename": "deepseek-ai-dsh-client-ui-sidebar-0.2.1-rc.2.tgz",
-      "size": 21163,
-      "sha256": "1405803da5ead935df05c1aaa6d788c2cf7f5f8d52e6cde9306571d27348e94b"
+      "size": 21164,
+      "sha256": "b5e1fc16da65b5d95e33a14cd1aeec6cca8bf96833348f9cd210a4c65058d22b"
     },
     {
       "name": "@deepseek-ai/dsh-client-ui-sidebar-browser",
@@ -2081,8 +2081,8 @@
       "name": "@deepseek-ai/dsh",
       "version": "0.2.1-rc.2",
       "filename": "deepseek-ai-dsh-0.2.1-rc.2.tgz",
-      "size": 25130,
-      "sha256": "722eab2e632603dea698a9ff5ebbbb35763362ac20fbfe879e176affb700f98e"
+      "size": 25131,
+      "sha256": "f263ce7200e54458be00b91113eff6d80eff0ccc1da9b20381191aa47a7edf27"
     },
     {
       "name": "@deepseek-ai/dsh-agent-loop-testkit",
