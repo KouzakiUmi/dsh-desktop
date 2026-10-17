@@ -10089,7 +10089,6 @@ __metadata:
     "@deepseek-ai/dsh-ptc-runtime": "npm:0.2.1-rc.2"
     "@deepseek-ai/dsh-pwsh-local": "npm:0.2.1-rc.2"
     "@deepseek-ai/dsh-pwsh-sandbox": "npm:0.2.1-rc.2"
-    "@deepseek-ai/dsh-repeat-tool-reminder": "npm:0.2.1-rc.2"
     "@deepseek-ai/dsh-sandbox": "npm:0.2.1-rc.2"
     "@deepseek-ai/dsh-sandbox-local": "npm:0.2.1-rc.2"
     "@deepseek-ai/dsh-sandbox-policy": "npm:0.2.1-rc.2"
