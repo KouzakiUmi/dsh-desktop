@@ -56,9 +56,12 @@ it('loads Office skills with the bundled Node and the installed CLI, and removes
     for (const entry of ctx.loader.entries()) await entry.fiber?.await()
     expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx'])
     expect((await ctx.skills.get('office-pptx'))?.resourceBase).toEqual({ kind: 'directory', path: join(assets, 'office-pptx').split(sep).join('/') })
-    const content = (await ctx.skills.get('office-pptx'))?.content ?? ''
-    expect(content).toContain('office-render')
-    expect(content).not.toContain(nodeDirectory)
+    expect((await ctx.skills.get('office-pptx'))?.content).toContain('office-render')
+    expect((await ctx.skills.get('office-pptx'))?.content).not.toContain(nodeDirectory)
+    const content = (await ctx.skills.get('office-render'))?.content ?? ''
+    expect(content).toContain('libreofficeKit')
+    expect(content).toContain(JSON.stringify(join(nodeDirectory, nodeName)).slice(1, -1))
+    expect(content).toContain(JSON.stringify(join(dirname(require.resolve('@deepseek-ai/libreoffice-kit/package.json')), 'lib', 'cli.js')).slice(1, -1))
     expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(['load_workspace_dependencies'])
     const entry = [...ctx.loader.entries()].find(entry => entry.options.name === 'office')
     expect(entry).toBeDefined()

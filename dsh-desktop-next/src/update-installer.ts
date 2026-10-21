@@ -1,4 +1,4 @@
-/** Native installer handoff. No application files are replaced by our own code. */
+/** Native installer handoff with explicit user-visible progress on Windows. */
 import { execFile, spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -24,9 +24,8 @@ export class NextUpdateInstaller {
     this.prepared = { path, version }
   }
   /**
-   * The NSIS installer stops the running application itself through Electron's single-instance
-   * channel (`adopted/build/installer.nsh`), so the handoff stages nothing in-process; this step
-   * only refuses an install that has no verified installer ready.
+   * The NSIS installer waits for the running application before its outer UAC handoff
+   * (`adopted/build/installer.nsh`); this step only requires a verified installer.
    */
   async stage(): Promise<void> {
     if (!this.prepared) throw new Error('No prepared Next update')
@@ -34,8 +33,8 @@ export class NextUpdateInstaller {
   /** Called after the Host and windows have finished shutting down. */
   async launch(): Promise<void> {
     if (this.prepared === undefined) throw new Error('No prepared update installer')
-    // Visible in-app update: the installer runs without `/S`, so it presents its own progress
-    // window and relaunches the updated application through the `--updated --force-run` handoff.
+    // Visible in-app update: no `/S`. The installer shows progress and relaunches the
+    // updated application through the `--updated --force-run` handoff.
     await new Promise<void>((resolve, reject) => {
       const child = spawn(this.prepared!.path, ['--updated', '--force-run'], { detached: true, stdio: 'ignore', shell: false, windowsHide: false })
       child.once('error', reject)

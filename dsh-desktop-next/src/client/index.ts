@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { installDesktopSettingsStyles } from '../../adopted/src/client/desktop-settings-styles.ts'
+import { installDesktopSettingsStyles } from './desktop-settings-styles.ts'
 import { installSidebarFooterStyles } from '../../adopted/src/client/sidebar-footer-styles.ts'
 import { NextSettingsAdapter } from './settings-adapter.ts'
 import { NextDesktopSettings, NextDesktopActions } from './settings.tsx'
@@ -20,6 +20,7 @@ import { installPluginControlsStyles } from './plugin-controls-styles.ts'
 import { desktopDirectoryPicker, registerDesktopDirectoryPicker } from './directory-picker.ts'
 import { SettingsRequests } from './settings-requests.tsx'
 import type { DesktopSettingsLocaleKey } from '../../adopted/src/client/desktop-settings-locales.ts'
+import { installRendererRecovery } from './renderer-recovery.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -52,6 +53,7 @@ export function apply(ctx: Context): void {
       features: {
         market: snapshot.input.market === 'community-market',
         dshMarket: snapshot.input.market === 'dsh-market',
+        ...((snapshot.input.market as string) === 'official-market' ? { officialMarket: true } : {}),
         remoteControl: snapshot.input.aaEnabled ?? false,
       },
       onboardingComputerUse: snapshot.computerUse ?? false,
@@ -64,7 +66,7 @@ export function apply(ctx: Context): void {
         const { appVersion: _version, profileName: _profile, platform: _platform, ...selection } = snapshot.input
         await finish(snapshot.profile, {
           ...selection,
-          market: command.features.market ? 'community-market' : command.features.dshMarket ? 'dsh-market' : 'disabled',
+          market: (command.features.market ? 'community-market' : command.features.dshMarket ? 'dsh-market' : command.features.officialMarket ? 'official-market' : 'disabled') as typeof selection.market,
           aaEnabled: command.features.remoteControl,
           computerUse: command.computerUse,
         })
@@ -72,6 +74,10 @@ export function apply(ctx: Context): void {
     },
   }))
   if (window.desktopNext) {
+    ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+      name: 'shell.overlay', id: 'desktop-next-renderer-health', order: 0,
+      inject: () => ({ ctx }),
+    }, RendererHealth))
     const permissions = window.desktopNext.permissions
     if (permissions) ctx.effect(() => {
       const dispose = ctx.reflect.provide('desktopPermissions', permissions)
@@ -95,7 +101,16 @@ export function apply(ctx: Context): void {
       name: 'shell.overlay', id: 'desktop-next-safe-mode', order: 100, locale: 'desktop-next',
     }, SafeModeNotice))
   }
-  ctx.effect(installWindowStyles, 'Next native materials and header interactions')
+  ctx.effect(installWindowStyles, 'Next native materials and recovery notice')
+}
+
+/** The effect runs only after React mounts the assembled shell. */
+function RendererHealth({ ctx }: { ctx: Context }) {
+  useEffect(() => {
+    const bridge = window.desktopNext?.renderer
+    if (bridge) return installRendererRecovery(ctx, bridge)
+  }, [ctx])
+  return null
 }
 
 /** Temporary, metadata-only trace for the AA dialog and its sibling Plugins UI. */

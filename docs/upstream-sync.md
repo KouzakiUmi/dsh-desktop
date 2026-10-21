@@ -30,7 +30,7 @@ NEXT 使用固定 Core 的主前端及扩展点，不维护另一套主前端。
 | Inspector 与 Electron 适配 | 活动补丁以 [root resolutions](<../package.json>) 和实际安装图为准，而非整个补丁目录。Inspector 构建 chunk 改名后重新定位 Reload DevTools 的 embedder callback，并保留 `test:inspector-compat`。其余 Windows/Electron 补丁逐个比较上游是否已修复，不能批量覆盖或删除。 |
 | Electron 内建访问模块 | [本地原生产物来源](<../vendor/node-addon-runtime/provenance.json>) 与[精确指纹补丁](<../patches/node-addon-require-builtin@0.1.9-electron44.7.2.patch>) 只替换 Win x64 平台包；entry/JS loader 保持原版本，不新增其它平台包。44.7.2 的 Node/V8 元组来自真实运行时，保留机器码解析、指针验证及未知元组拒绝；不能只放宽白名单或猜偏移。普通 Node、Electron Node-mode 与真实 Electron 主进程分别验证；正式上游支持并实测后退休本地替代。 |
 | ASAR 自身包解析 | [Host 自身包解析](<../dsh-desktop-next/src/host/own-package.ts>) 只把安装包自己已声明的 file/default exports 映射为包内 URL；其它包仍走既有链，不复制应用到 Profile、不导出私有子路径。源码目录能被普通 Node 找到不能替代真实封装 Host 验证。 |
-| AA 桥接 | [Connector 补丁](<../patches/agents-anywhere-connector-httpx.patch>) 保留子进程 httpx 的裸 IPv6 bypass、父环境隔离、Connector 日志与 JSON 传输后一致的内容哈希。[AA policy](<../scripts/agents-anywhere-release-policy.mjs>) 统一维护五个 runtime peers，包含 Cordis/Schemastery；不要再在补丁里硬编码另一套旧 peer 范围。当前 Gateway 的事件订阅和回复必须使用同一个受 Context 生命周期管理的真实 Peer，不能传 undefined、借用浏览器 Peer 或靠函数 arity 猜测兼容。 |
+| AA 桥接 | 官方 AA 产物提供子进程 httpx 的裸 IPv6 bypass、父环境隔离、Connector 日志与 JSON 传输后一致的内容哈希；限定范围的[交互 Peer 补丁](<../patches/agents-anywhere-interaction-peer.patch>) 为当前 Gateway 订阅与回复保留受 Context 生命周期管理的真实 Peer，不恢复已退休的大块 Connector 补丁。[AA policy](<../scripts/agents-anywhere-release-policy.mjs>) 统一维护五个 runtime peers，包含 Cordis/Schemastery；不要再在补丁里硬编码另一套旧 peer 范围。当前 Gateway 的事件订阅和回复必须使用同一个受 Context 生命周期管理的真实 Peer，不能传 undefined、借用浏览器 Peer 或靠函数 arity 猜测兼容。 |
 
 | 循环 CoT 守卫运行实现 | 该实现与其运行文件随维护 Core 提交进入 vendored 运行时，不再以版本绑定补丁补齐；守卫由 `dsh` 基础组合默认挂载（与上游同一位），Desktop 不重复挂载。不恢复十二包候选／root 补丁、导出器及其校验入口；升级 Core 时按第 4 节推进 pin、manifest 与锁文件。 |
 

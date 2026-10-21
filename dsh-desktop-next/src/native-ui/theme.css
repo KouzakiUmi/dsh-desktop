@@ -1,4 +1,5 @@
 @import '../../adopted/src/native-ui/shared/theme.css';
+@import './onboarding.css';
 @source '../../adopted/src/native-ui';
 /* Map the official Settings tokens onto the existing native-window theme. */
 :root {

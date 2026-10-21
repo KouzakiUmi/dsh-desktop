@@ -16,10 +16,7 @@ vi.mock('node:child_process', () => {
         else resolve({ stdout, stderr })
       })
     })
-  return {
-    spawn: (...args: unknown[]) => spawnMock(...args),
-    execFile: fn,
-  }
+  return { spawn: (...args: unknown[]) => spawnMock(...args), execFile: fn }
 })
 
 import { assertNextWindowsInstaller, NextUpdateInstaller } from '../src/update-installer.ts'
@@ -59,26 +56,18 @@ it('launches the Windows NSIS installer visibly without /S so progress is shown 
   const exe = join(root, 'DSH-NEXT-Setup-2.0.18-next.1.exe')
   await writeFile(exe, 'installer')
   execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, callback: (err: Error | null, stdout: string, stderr: string) => void) => {
-    callback(null, JSON.stringify({
-      ProductName: 'DSH NEXT',
-      ProductVersion: '2.0.18-next.1',
-    }), '')
+    callback(null, JSON.stringify({ ProductName: 'DSH NEXT', ProductVersion: '2.0.18-next.1' }), '')
   })
   mockSpawnSuccess()
   const installer = new NextUpdateInstaller({
-    platform: 'win32',
-    executable: 'C:\\Users\\user\\AppData\\Local\\Programs\\DSH NEXT\\DSH NEXT.exe',
-    log: vi.fn(),
+    platform: 'win32', executable: 'C:\\Users\\user\\AppData\\Local\\Programs\\DSH NEXT\\DSH NEXT.exe', log: vi.fn(),
   })
   await installer.prepare(exe, '2.0.18-next.1', root, new AbortController().signal)
   await installer.stage()
   await installer.launch()
   expect(spawnMock).toHaveBeenCalledOnce()
-  expect(spawnMock).toHaveBeenCalledWith(
-    exe,
-    ['--updated', '--force-run'],
-    expect.objectContaining({ detached: true, stdio: 'ignore', windowsHide: false }),
-  )
+  expect(spawnMock).toHaveBeenCalledWith(exe, ['--updated', '--force-run'],
+    expect.objectContaining({ detached: true, stdio: 'ignore', shell: false, windowsHide: false }))
 })
 
 it('refuses the installer handoff until a verified installer has been prepared', async () => {

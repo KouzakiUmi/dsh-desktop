@@ -1,0 +1,70 @@
+diff --git a/lib/index.js b/lib/index.js
+index 843f59f..ea44697 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -5787,22 +5787,9 @@ var NativeSessionSource = class {
+ };
+ //#endregion
+ //#region src/host/dsh-runtime/interaction-stream.ts
+-/** Connection renamed its local owner from operator to browserPeer in 0.2.1. */
+-function interactionPeer(connection) {
+-	const peer = connection.browserPeer ?? connection.operator;
+-	if (!peer) throw new Error("DSH Connection does not provide a local owner Peer.");
+-	return peer;
+-}
+-/** Older Gateways omit uplink and peer; current ones require an explicit owner. */
++/** Current Core requires the same Context-owned Peer for streams and replies. */
+ function openInteractionEvents(wireStream, signal, peer) {
+-	const open = wireStream.open;
+-	const args = ["$events", { args: {} }];
+-	if (open.length === 5) {
+-		if (!peer) throw new Error("DSH interaction stream requires a local owner Peer.");
+-		args.push((async function* () {})(), peer, signal);
+-	} else if (open.length === 3) args.push(signal);
+-	else throw new Error("Unsupported DSH interaction stream signature.");
+-	return Reflect.apply(open, wireStream, args);
++	return wireStream.open("$events", { args: {} }, (async function* () {})(), peer, signal);
+ }
+ /** A local consumer of the official Remote stream, not a replacement answer provider. */
+ var InteractionStream = class {
+@@ -5819,11 +5806,12 @@ var InteractionStream = class {
+ 			service
+ 		], (ready) => {
+ 			const abort = new AbortController();
++			const peer = ready.connection.createPeer({ principal: { kind: "owner" }, interactions: "answer" });
+ 			const run = async () => {
+ 				let failed = false;
+ 				while (!abort.signal.aborted) {
+ 					try {
+-						const stream = await openInteractionEvents(ready.typertGateway.wireStream, abort.signal, interactionPeer(ready.connection));
++						const stream = await openInteractionEvents(ready.typertGateway.wireStream, abort.signal, peer);
+ 						for await (const value of stream) {
+ 							if (abort.signal.aborted) break;
+ 							const frame = record(value);
+@@ -5832,7 +5820,7 @@ var InteractionStream = class {
+ 								failed = false;
+ 								const wasAvailable = this.available;
+ 								this.clientId = frame.clientId;
+-								this.activeContext = ready;
++								this.activeContext = { ctx: ready, peer };
+ 								if (!wasAvailable) changed();
+ 							} else await receive(frame);
+ 						}
+@@ -5868,7 +5856,7 @@ var InteractionStream = class {
+ 		};
+ 	}
+ 	async reply(eventId, outcome) {
+-		const ctx = this.activeContext, clientId = this.clientId;
++		const active = this.activeContext, ctx = active?.ctx, clientId = this.clientId;
+ 		if (!ctx || !clientId) throw new Error("DSH 交互连接暂不可用，请稍后重试。");
+ 		const rpcId = randomUUID();
+ 		const handler = ctx.connection.createSharedFetchHandler("/api");
+@@ -5887,7 +5875,7 @@ var InteractionStream = class {
+ 				} }
+ 			})
+ 		});
+-		const response = await Reflect.apply(handler.fetch, handler, [request, interactionPeer(ctx.connection)]);
++		const response = await Reflect.apply(handler.fetch, handler, [request, active.peer]);
+ 		const envelope = record(await response.json());
+ 		if (!response.ok || envelope.type !== "server-response" || envelope.rpcId !== rpcId || record(envelope.result).ok !== true) throw new Error("DSH 未接收回答，请稍后重试。");
+ 	}

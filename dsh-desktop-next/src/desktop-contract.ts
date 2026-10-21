@@ -60,7 +60,7 @@ export interface DesktopState {
   busy: boolean
   failure: string
   safeMode: boolean
-  /** The selected Profile needs Desktop setup in the running official client. */
+  /** The selected Profile is in Desktop setup before its Host starts. */
   onboarding?: boolean
   /** Initial saved choice for setup; live state belongs to pluginManager. */
   onboardingComputerUse?: boolean
@@ -107,12 +107,19 @@ export type DesktopCommand =
     | 'diagnostics' | 'open-browser' | 'open-lan' | 'copy-browser' | 'copy-lan' | 'export-ca' | 'quit' }
 
 export interface DesktopBridge {
+  readonly renderer?: DesktopRendererBridge
   readonly permissions?: DesktopPermissions
   /** Native menu/Host requests, delivered only to the main app. */
   onOpenSettings?(listener: (page: DesktopSettingsPage) => void): () => void
   state(): Promise<DesktopState>
   browserLinks(): Promise<DesktopBrowserLinks>
   command(command: DesktopCommand): Promise<void>
+}
+
+/** Metadata-only health reports from the mounted Next client. */
+export interface DesktopRendererBridge {
+  profile(): string
+  report(status: import('./renderer-recovery.ts').DesktopRendererStatus): Promise<void>
 }
 
 declare global { interface Window { desktopNext?: DesktopBridge } }

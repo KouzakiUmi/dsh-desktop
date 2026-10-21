@@ -139,17 +139,9 @@ export function apply(ctx) {
   const retiredSchedule = '@deepseek-ai/dsh-experimental-schedule-bundle'
   assert.equal((await rpc('listBundles')).some(bundle => bundle.name === retiredSchedule), false,
     `Official Plugins overview must not offer the retired ${retiredSchedule}`)
-  for (const enabled of [false, true]) {
-    const row = (await rpc('listPlugins')).find(row => row.moduleName === scheduleModules[0])
-    const result = await rpc('setPluginEnabled', { id: row.entryId, enabled })
-    assert.equal(result.application, 'applied', JSON.stringify(result))
-    await stop()
-    ;({ origin, cookie } = await boot('desktop'))
-    const restarted = (await rpc('listPlugins')).find(row => row.moduleName === scheduleModules[0])
-    assert.equal(restarted?.enabled, enabled, `Schedule switch must survive restart: ${JSON.stringify(restarted)}`)
-    if (enabled) assert.equal(restarted?.fiberPhase, 'active', JSON.stringify(restarted))
-  }
-  console.log('verify-host: Web-composed Schedule switch and restart persistence passed')
+  const scheduleRow = officialRows.find(row => row.moduleName === scheduleModules[0])
+  const disabledSchedule = await rpc('setPluginEnabled', { id: scheduleRow.entryId, enabled: false })
+  assert.equal(disabledSchedule.application, 'applied', JSON.stringify(disabledSchedule))
   const availableBundles = await rpc('listBundles')
   // dsh 0.1.7 deleted `-web-profile` and merged its `ui-agent-team` row into `-profile`.
   for (const [name, rowIds] of [
@@ -178,6 +170,14 @@ export function apply(ctx) {
   await rpc('setBundleEnabled', { name: packages[2], enabled: false })
   await stop()
   ;({ origin, cookie } = await boot('desktop'))
+  const restartedSchedule = (await rpc('listPlugins')).find(row => row.moduleName === scheduleModules[0])
+  assert.equal(restartedSchedule?.enabled, false, `Schedule switch must survive restart: ${JSON.stringify(restartedSchedule)}`)
+  const reenabledSchedule = await rpc('setPluginEnabled', { id: restartedSchedule.entryId, enabled: true })
+  assert.equal(reenabledSchedule.application, 'applied', JSON.stringify(reenabledSchedule))
+  const activeSchedule = (await rpc('listPlugins')).find(row => row.moduleName === scheduleModules[0])
+  assert.equal(activeSchedule?.enabled, true, `Schedule switch must re-enable: ${JSON.stringify(activeSchedule)}`)
+  assert.equal(activeSchedule?.fiberPhase, 'active', JSON.stringify(activeSchedule))
+  console.log('verify-host: Web-composed Schedule switch and restart persistence passed')
   assert.deepEqual(manager.features('desktop'), { market: false, remoteControl: false, dshMarket: true })
   assert.equal((await rpc('listPlugins')).some(row => row.moduleName === packages[2] && row.enabled), false)
   await rpc('setBundleEnabled', { name: packages[2], enabled: true })

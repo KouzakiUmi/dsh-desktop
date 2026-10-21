@@ -29,15 +29,10 @@ index c22b9c4..ca83d3d 100644
  							bundles: keysOf("plugins.bundle.config"),
  							rows: keysOf("plugins.row.config")
  						};
-@@ -2588,9 +2594,15 @@ window.__ModuleLoader__.load({
+@@ -2588,9 +2594,10 @@ window.__ModuleLoader__.load({
  			});
  		}
  		/** The top every page shares: the crumb that leads back, then the icon with the page's actions at its right. */
-+		/** Sidebar control in native window chrome, independent of the scrolling page header. */
-+		function PluginSidebarControl({ renderSlot }) {
-+			if (!(0, _deepseek_ai_dsh_client_ui_primitives.isDarwinDesktop)()) return null;
-+			return (0, react_jsx_runtime.jsx)("div", { "data-plugin-sidebar-control": "", children: renderSlot("plugins.header.leading", {}) });
-+		}
  		function DetailTop({ crumbLabel, crumbText, onBack, icon, actions }) {
  			return (0, react_jsx_runtime.jsxs)("div", {
  				className: PluginManagerPage_module_css_default.detailTop,
@@ -45,7 +40,7 @@ index c22b9c4..ca83d3d 100644
  				"data-window-drag": true,
  				children: [(0, react_jsx_runtime.jsxs)("button", {
  					type: "button",
-@@ -2617,7 +2629,7 @@ window.__ModuleLoader__.load({
+@@ -2617,7 +2624,7 @@ window.__ModuleLoader__.load({
  			return pkg.version !== target.version || (target.spec.startsWith("link:") || pkg.source?.startsWith("link:") === true) && pkg.source !== target.spec;
  		}
  		/** One package as a card that opens its page: its name, its one-liner, its tags, and its bundle switch. */
@@ -54,7 +49,7 @@ index c22b9c4..ca83d3d 100644
  			const { title, description, beta } = packageText(pkg, resolveText);
  			const status = packageStatus(pkg);
  			return (0, react_jsx_runtime.jsxs)("li", {
-@@ -2652,13 +2664,15 @@ window.__ModuleLoader__.load({
+@@ -2652,13 +2659,15 @@ window.__ModuleLoader__.load({
  						}) : null
  					] }),
  					description,
@@ -72,7 +67,7 @@ index c22b9c4..ca83d3d 100644
  				}), (0, react_jsx_runtime.jsx)(MetadataError, {
  					error: pkg.meta?.error,
  					t
-@@ -2707,7 +2721,7 @@ window.__ModuleLoader__.load({
+@@ -2707,7 +2716,7 @@ window.__ModuleLoader__.load({
  		* contributed actions, its title with the contributed badges over its
  		* one-liner, the form the entry renders, and the contributed sections.
  		*/
@@ -81,7 +76,7 @@ index c22b9c4..ca83d3d 100644
  			const subject = {
  				kind: "item",
  				id: item.id
-@@ -2746,7 +2760,7 @@ window.__ModuleLoader__.load({
+@@ -2746,7 +2755,7 @@ window.__ModuleLoader__.load({
  							"data-plugin-config": true,
  							children: renderSlot("plugins.item", {
  								view: "page",
@@ -90,7 +85,7 @@ index c22b9c4..ca83d3d 100644
  							}, { only: item.id })
  						}), renderSlot("plugins.detail.section", { subject })]
  					})
-@@ -3876,7 +3890,8 @@ window.__ModuleLoader__.load({
+@@ -3876,7 +3885,8 @@ window.__ModuleLoader__.load({
  				};
  			}, [highlight, clearHighlight]);
  			const noticeLine = state.notice === null || state.notice.kind === "refresh-failed" ? null : noticeText(state.notice, t);
@@ -100,7 +95,7 @@ index c22b9c4..ca83d3d 100644
  			const mine = listed.filter((pkg) => !pkg.official);
  			const official = listed.filter((pkg) => pkg.official);
  			const ordered = orderOptionalBundles(official);
-@@ -3885,7 +3900,7 @@ window.__ModuleLoader__.load({
+@@ -3885,7 +3895,7 @@ window.__ModuleLoader__.load({
  			const more = ordered;
  			const loaded = state.status === "ready" || state.status === "error";
  			const refreshing = state.refreshStatus === "refreshing";
@@ -109,7 +104,7 @@ index c22b9c4..ca83d3d 100644
  			const openItem = view.kind === "item" ? ledger.items.find((item) => item.id === view.id) : void 0;
  			const openRow = view.kind === "row" && openPkg !== void 0 ? openPkg.rows.find((row) => row.rowId === view.rowId) : void 0;
  			const onInstalled = tab === INSTALLED_TAB;
-@@ -3917,8 +3932,24 @@ window.__ModuleLoader__.load({
+@@ -3917,8 +3927,24 @@ window.__ModuleLoader__.load({
  				}
  			});
  			const packageBusy = (pkg) => state.busy.includes(pkg.name) || state.install.subject?.name === pkg.name && (isInstallPending(state.install.phase) || state.install.phase === "checking");
@@ -134,7 +129,7 @@ index c22b9c4..ca83d3d 100644
  				t,
  				resolveText,
  				busy: packageBusy(pkg),
-@@ -3936,7 +3967,7 @@ window.__ModuleLoader__.load({
+@@ -3936,7 +3962,7 @@ window.__ModuleLoader__.load({
  					props.setEnabled(pkg.name, enabled);
  				}
  			}, pkg.name);
@@ -143,18 +138,17 @@ index c22b9c4..ca83d3d 100644
  				item,
  				t,
  				renderSlot,
-@@ -3981,8 +4012,10 @@ window.__ModuleLoader__.load({
+@@ -3981,8 +4007,9 @@ window.__ModuleLoader__.load({
  				"data-plugin-panel": true,
  				"aria-busy": state.status === "loading" || refreshing,
  				children: [
-+					(0, react_jsx_runtime.jsx)(PluginSidebarControl, { renderSlot }),
  					showsMainList ? (0, react_jsx_runtime.jsxs)("header", {
  						className: PluginManagerPage_module_css_default.pageHead,
 +						"data-plugin-page-header": "list",
  						"data-window-drag": true,
  						children: [(0, react_jsx_runtime.jsxs)("div", {
  							className: PluginManagerPage_module_css_default.pageHeading,
-@@ -4109,6 +4142,18 @@ window.__ModuleLoader__.load({
+@@ -4109,6 +4136,18 @@ window.__ModuleLoader__.load({
  							children: t("moreTitle")
  						})]
  					}) : null,
@@ -173,7 +167,7 @@ index c22b9c4..ca83d3d 100644
  					installedCards && !loaded ? (0, react_jsx_runtime.jsxs)("div", {
  						className: PluginManagerPage_module_css_default.installedPanel,
  						...installedPanel,
-@@ -4178,6 +4223,7 @@ window.__ModuleLoader__.load({
+@@ -4178,6 +4217,7 @@ window.__ModuleLoader__.load({
  					}) : null,
  					onInstalled && loaded && openItem !== void 0 ? (0, react_jsx_runtime.jsx)(ItemDetail, {
  						form: formFor(openItem.id),
@@ -181,7 +175,7 @@ index c22b9c4..ca83d3d 100644
  						item: openItem,
  						t,
  						renderSlot,
-@@ -4421,6 +4467,11 @@ window.__ModuleLoader__.load({
+@@ -4421,6 +4461,11 @@ window.__ModuleLoader__.load({
  					store,
  					inject: () => face,
  					children: {

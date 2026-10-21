@@ -31,8 +31,9 @@ export function nextRuntimeFileExclusion(path: string, target: NextPackagingTarg
   const nativeTokens = [...name.matchAll(/(?:^|-)((?:win32|darwin|linux)-(?:x64|arm64|ia32|arm))(?:-|$)/gu)]
     .flatMap(match => (match[1] === undefined ? [] : [match[1]]))
   if (nativeTokens.length > 0 && !nativeTokens.some(token => targets.includes(token))) return 'native package other platform'
+  const officeEngines = target.platform === 'linux' ? ['wasm'] : targets
   if (name.startsWith('@deepseek-ai/libreoffice-kit-')) {
-    if (!targets.some(suffix => name === `@deepseek-ai/libreoffice-kit-${suffix}`)) return 'LibreOffice other platform'
+    if (!officeEngines.some(suffix => name === `@deepseek-ai/libreoffice-kit-${suffix}`)) return 'LibreOffice other platform'
   }
   if (name === 'fs-ext' && /^build\/(?:Release|Debug)\/(?:obj(?:\/|$)|fs_ext\.(?:exp|lib|pdb|iobj|ipdb)$)/u.test(entry)) {
     return 'fs-ext compiler output'

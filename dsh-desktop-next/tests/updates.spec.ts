@@ -39,7 +39,7 @@ async function fixture(overrides: Partial<NextUpdateOptions> = {}) {
   const home = await mkdtemp(join(tmpdir(), 'next-updates-test-')); roots.push(home)
   const artifact = windowsInstaller()
   const request = vi.fn<UpdateRequest>(async url => url.includes('/version')
-    ? Response.json({ version: '2.0.18-next.1', channel: 'next' }) : new Response(new Uint8Array(artifact), { headers: { 'content-length': '1024' } }))
+    ? Response.json({ version: '2.0.19-next.1', channel: 'next' }) : new Response(new Uint8Array(artifact), { headers: { 'content-length': '1024' } }))
   const artifactRequest = vi.fn<UpdateArtifactRequest>(async (url, init) => ({ response: await request(url, init), finalUrl: url }))
   const options: NextUpdateOptions = { userData: home, version: '2.0.14-next', platform: 'win32', packaged: true,
     request, artifactRequest, prepare: vi.fn(async path => { expect(await readFile(path)).toEqual(artifact) }), install: vi.fn(async () => {}),
@@ -62,7 +62,7 @@ it('checks without downloading; download completion waits for an explicit instal
   expect(updates.snapshot().phase).toBe('installing')
 })
 it('does not confuse an unpublished channel, invalid response or network failure with up to date', async () => {
-  for (const response of [new Response('', { status: 400 }), new Response('', { status: 503 }), Response.json({ version: '2.0.17', channel: 'stable' })]) {
+  for (const response of [new Response('', { status: 400 }), new Response('', { status: 503 }), Response.json({ version: '2.0.18', channel: 'stable' })]) {
     const { updates } = await fixture({ request: async () => response })
     await updates.check()
     expect(updates.snapshot()).toMatchObject({ phase: 'error', error: 'service' })
@@ -105,11 +105,11 @@ it('shows progress and an actionable downloaded state in both languages', () => 
 it('downloads a Next installer through the injected artifact transport', async () => {
   const cdn = 'https://cdn-lfs-cn-1.modelscope.cn/prod/lfs-objects/next.exe'
   const artifact = windowsInstaller()
-  const request = vi.fn<UpdateRequest>(async () => Response.json({ version: '2.0.18-next.1', channel: 'next' }))
+  const request = vi.fn<UpdateRequest>(async () => Response.json({ version: '2.0.19-next.1', channel: 'next' }))
   const artifactRequest = vi.fn<UpdateArtifactRequest>(async () => ({ response: new Response(new Uint8Array(artifact)), finalUrl: cdn }))
   const { updates, options } = await fixture({ request, artifactRequest })
   await updates.download()
-  expect(updates.snapshot()).toMatchObject({ phase: 'ready', version: '2.0.18-next.1' })
+  expect(updates.snapshot()).toMatchObject({ phase: 'ready', version: '2.0.19-next.1' })
   expect(artifactRequest).toHaveBeenCalledOnce()
   expect(options.prepare).toHaveBeenCalledOnce()
 })

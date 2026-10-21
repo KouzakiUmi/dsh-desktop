@@ -24,7 +24,7 @@ it('packages Windows x64 only while keeping fuses and native inventory aligned w
   expect(next.build.win.target).toEqual([{ target: 'nsis', arch: ['x64'] }])
   // Electron's own fs and dlopen read the archive; child processes, shells and nativeImage need these physically.
   expect(next.build.asarUnpack).toEqual(expect.arrayContaining(['**/*.{node,dll,exe}',
-    '**/@vscode/ripgrep-*/bin/rg', '**/@dataiku/uv-*/bin/uv', '**/node_modules/@deepseek-ai/libreoffice-kit-*/**/*', '**/node_modules/pnpm/**/*',
+    '**/@vscode/ripgrep-*/bin/rg', '**/@dataiku/uv-*/bin/uv', '**/meshcall-router-*/bin/*', '**/node_modules/@deepseek-ai/libreoffice-kit-*/**/*', '**/node_modules/pnpm/**/*',
     '**/node_modules/@agents-anywhere/dsh-bridge-next/lib/bundled-connector/**/*', '**/node_modules/@deepseek-ai/dsh-agent-preset/**/*',
     '**/node_modules/@deepseek-ai/dsh-skill-badge/**/*']))
   // The prepared tree is archived verbatim, as upstream archives its prepared dsh tree: one file set for the

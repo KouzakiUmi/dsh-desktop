@@ -53,7 +53,7 @@ it('opens the scoped dialog and only queries or requests microphone permission',
   await vi.waitFor(() => { expect(permissions.openSettings).toHaveBeenCalledExactlyOnceWith('microphone') })
 })
 
-it('names ungranted screen and Accessibility access and explains the macOS steps the system omits', () => {
+it('names ungranted screen and Accessibility access without offering macOS-only recovery steps', () => {
   const snapshot = (permission: DesktopPermission, status: DesktopPermissionSnapshot['status'], canRequest: boolean): DesktopPermissionSnapshot =>
     ({ permission, status, canRequest, canOpenSettings: true })
   hooks.states = [[snapshot('screen', 'denied', true), snapshot('accessibility', 'denied', true), snapshot('microphone', 'denied', false)]]
@@ -62,7 +62,9 @@ it('names ungranted screen and Accessibility access and explains the macOS steps
   const texts = nodes(detail).flatMap(node => [node.props.children].flat().filter((child): child is string => typeof child === 'string'))
   expect(texts.filter(text => text === '未授权')).toHaveLength(2)
   expect(texts).toContain('已拒绝')
-  expect(texts).toContain('开启后 macOS 会要求重新打开应用。')
-  expect(texts).toContain('若系统设置中已显示开启，请移除本应用后重新添加。')
+  expect(texts).toContain('用于截图，让 AI 读取屏幕内容。')
+  expect(texts).toContain('允许 Computer Use 操作鼠标和键盘。')
+  expect(texts.join(' ')).not.toContain('macOS')
+  expect(texts).not.toContain('若系统设置中已显示开启，请移除本应用后重新添加。')
   expect(nodes(detail).filter(node => node.props.children === '请求授权')).toHaveLength(2)
 })

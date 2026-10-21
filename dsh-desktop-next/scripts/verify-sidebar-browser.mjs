@@ -10,7 +10,10 @@ const HOME_PREFIX = 'sidebar-browser-'
 if (process.platform !== 'win32' || process.arch !== 'x64') {
   console.error('Run this native Browser check on Windows x64; portable checks do not start Electron.')
   app.exit(1)
-} else { void verify() }
+} else {
+  process.on('uncaughtException', error => { console.error(error); app.exit(1) })
+  void verify()
+}
 
 async function verify() {
   const home = process.argv[process.argv.indexOf('--verification-home') + 1]
@@ -101,6 +104,7 @@ async function verify() {
   } finally {
     clearTimeout(deadline)
     window?.destroy()
+    server.closeAllConnections()
     await new Promise(resolve => server.close(resolve))
     app.exit(code)
   }

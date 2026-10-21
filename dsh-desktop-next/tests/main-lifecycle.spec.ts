@@ -13,14 +13,15 @@ afterEach(() => { for (const listener of process.listeners('uncaughtExceptionMon
 
 const fixture = vi.hoisted(() => ({
   windows: [] as any[], trays: [] as any[], handlers: new Map<string, (...args: any[]) => any>(),
-  load: vi.fn(), report: vi.fn(), plugin: vi.fn(), pluginDone: vi.fn(), diagnosticAppend: vi.fn(),
+  load: vi.fn(), injections: vi.fn(async () => []), report: vi.fn(), plugin: vi.fn(), pluginDone: vi.fn(), diagnosticAppend: vi.fn(),
   terminalTarget: vi.fn(), openTerminal: vi.fn(), popup: vi.fn(),
   stop: vi.fn(async () => {}),
   close: vi.fn(async () => {}), start: vi.fn(async () => {}), preferences: { closeToTray: true },
   phase: 'ready' as 'ready' | 'error',
-  needsOnboarding: false, corruptProfile: false, restart: vi.fn(),
+  needsOnboarding: false, corruptProfile: false, restart: vi.fn(), hostReady: false,
   appPaths: new Map<string, string>(), lockPaths: [] as string[], ownsInstance: true,
   runtimeOptions: undefined as ConstructorParameters<typeof NextDesktopRuntime>[0] | undefined,
+  profiles: undefined as NextProfiles | undefined,
   onPermission: undefined as ConstructorParameters<typeof NextDesktopRuntime>[0]['onPermission'],
 }))
 vi.mock('../src/desktop-runtime.ts', async () => { const { NextProfiles } = await import('../src/profiles.ts'); const { NextRecovery } = await import('../src/recovery.ts'); return { NextDesktopRuntime: class {
@@ -29,14 +30,17 @@ vi.mock('../src/desktop-runtime.ts', async () => { const { NextProfiles } = awai
   selected = 'desktop'
   safeMode = false
   recoveryMode = false
-  backend = { stop: fixture.stop, host: undefined, get state() { return { phase: fixture.phase } } }
+  backend = { stop: fixture.stop, get host() { return fixture.hostReady ? {} : undefined }, get state() { return { phase: fixture.phase } } }
+  startup = Promise.resolve()
+  get auth() { return fixture.hostReady ? { url: 'http://127.0.0.1:1234/' } : undefined }
+  injections = fixture.injections
   profiles: NextProfiles
   recovery: import('../src/recovery.ts').NextRecovery
   diagnostics = { append: fixture.diagnosticAppend, flush: vi.fn(), hostChunk: vi.fn(), record: fixture.diagnosticAppend, operation: vi.fn(() => vi.fn()), begin: vi.fn(), end: vi.fn(), pendingOperations: vi.fn(() => []) }
   constructor(options: ConstructorParameters<typeof NextDesktopRuntime>[0]) {
     fixture.runtimeOptions = options
     fixture.preferences = this.preferences; fixture.onPermission = options.onPermission
-    this.profiles = new NextProfiles(options.home)
+    this.profiles = fixture.profiles = new NextProfiles(options.home)
     this.recovery = new NextRecovery(this.profiles)
     this.profiles.ensure('desktop')
     if (!fixture.needsOnboarding) this.profiles.finishOnboarding('desktop')
@@ -73,7 +77,14 @@ vi.mock('electron', async () => {
     webContents = Object.assign(new EventEmitter(), { id: fixture.windows.length + 1,
       mainFrame: { url: '' }, getURL: () => this.webContents.mainFrame.url, setWindowOpenHandler() {}, send: vi.fn(), isDestroyed: () => false,
       setIgnoreMenuShortcuts() {}, isFocused: () => true, executeJavaScript: vi.fn(async () => true) })
-    constructor(readonly options: any) { super(); fixture.windows.push(this) }
+    size: { width: number, height: number }
+    minSize: { width: number, height: number }
+    constructor(readonly options: any) {
+      super()
+      this.size = { width: options.width, height: options.height }
+      this.minSize = { width: options.minWidth, height: options.minHeight }
+      fixture.windows.push(this)
+    }
     destroyed = false
     isDestroyed() { return this.destroyed }
     isMinimized() { return false }
@@ -81,16 +92,21 @@ vi.mock('electron', async () => {
     show() { this.visible = true }
     hide() { this.visible = false }
     focus() {}
-    setSize() {}
+    setSize(width: number, height: number) { this.size = { width, height } }
     setResizable() {}
-    setMinimumSize() {}
+    setMinimumSize(width: number, height: number) { this.minSize = { width, height } }
     close() { this.destroy() }
     destroy() { this.destroyed = true; this.visible = false; this.emit('closed') }
     setVibrancy() {}
     setBackgroundColor() {}
     setBackgroundMaterial() {}
     setTitleBarOverlay = vi.fn()
-    async loadURL(url: string) { this.webContents.mainFrame.url = url; this.loadedUrls.push(url); await fixture.load(this, url) }
+    async loadURL(url: string) {
+      this.webContents.mainFrame.url = url; this.loadedUrls.push(url)
+      this.webContents.emit('did-start-navigation', {}, url, false, true)
+      await fixture.load(this, url)
+      if (!this.destroyed) this.webContents.emit('did-finish-load')
+    }
   }
   class Tray extends EventEmitter {
     destroyed = false
@@ -120,11 +136,11 @@ vi.mock('electron', async () => {
 beforeEach(async () => {
   vi.resetModules()
   fixture.windows.length = 0; fixture.trays.length = 0; fixture.handlers.clear()
-  fixture.appPaths.clear(); fixture.lockPaths.length = 0; fixture.ownsInstance = true; fixture.runtimeOptions = undefined
+  fixture.appPaths.clear(); fixture.lockPaths.length = 0; fixture.ownsInstance = true; fixture.runtimeOptions = undefined; fixture.profiles = undefined
   fixture.phase = 'ready'
-  fixture.needsOnboarding = false; fixture.corruptProfile = false; fixture.restart.mockReset()
+  fixture.needsOnboarding = false; fixture.corruptProfile = false; fixture.restart.mockReset(); fixture.hostReady = false
   fixture.plugin.mockReset(); fixture.pluginDone.mockReset().mockResolvedValue({ exitCode: 0 });
-  fixture.load.mockReset(); fixture.report.mockReset(); fixture.diagnosticAppend.mockReset();
+  fixture.load.mockReset(); fixture.injections.mockReset().mockResolvedValue([]); fixture.report.mockReset(); fixture.diagnosticAppend.mockReset();
   fixture.terminalTarget.mockReset(); fixture.openTerminal.mockClear(); fixture.popup.mockClear();
   fixture.stop.mockReset().mockResolvedValue(undefined); fixture.start.mockClear(); fixture.close.mockReset().mockResolvedValue(undefined)
   const { app, autoUpdater } = await import('electron')
@@ -133,6 +149,133 @@ beforeEach(async () => {
   vi.mocked(app.relaunch).mockClear()
   vi.mocked(app.quit).mockClear()
   vi.mocked(app.exit).mockClear()
+})
+
+afterEach(() => { for (const window of fixture.windows) if (!window.destroyed) window.destroy() })
+
+it('repairs a crashed renderer and fences old document reports while preserving its Host', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'next-renderer-repair-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  fixture.hostReady = true
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const main = fixture.windows[0]
+    const sender = { sender: main.webContents, senderFrame: main.webContents.mainFrame }
+    const boot = fixture.handlers.get('dsh-next:boot')!
+    const report = fixture.handlers.get('dsh-next:renderer-status')!
+    vi.useFakeTimers({ shouldClearNativeTimers: true })
+    const first = await boot(sender)
+    report(sender, first.documentId, 'healthy')
+    main.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: -1073741819 })
+    main.webContents.emit('did-fail-load', {}, -2, 'same crash', 'dsh-app://app/', true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(main.loadedUrls).toHaveLength(2)
+    expect(fixture.stop).not.toHaveBeenCalled()
+    expect(fixture.report).not.toHaveBeenCalled()
+    expect(fixture.start).toHaveBeenCalledOnce()
+    expect(fixture.windows).toHaveLength(1)
+    expect(fixture.diagnosticAppend).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'renderer', event: 'process-gone', fields: { reason: 'crashed', exitCode: -1073741819 },
+    }))
+    const second = await boot(sender)
+    expect(second.documentId).not.toBe(first.documentId)
+    fixture.diagnosticAppend.mockClear()
+    report(sender, first.documentId, 'healthy')
+    fixture.handlers.get('dsh-next:failed')!(sender, 'late old boot failure', first.documentId)
+    expect(fixture.diagnosticAppend).not.toHaveBeenCalled()
+    report(sender, second.documentId, 'healthy')
+    expect(fixture.diagnosticAppend).toHaveBeenCalledWith(expect.objectContaining({ event: 'renderer.recovery.healthy', fields: { attempt: 1 } }))
+    expect(() => report(sender, second.documentId, 'made-up-status')).toThrow('Invalid renderer status')
+    expect(() => report({ ...sender, senderFrame: {} }, second.documentId, 'healthy')).toThrow()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(main.loadedUrls).toHaveLength(2)
+  } finally { vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
+})
+
+it('rejects boot data from a superseded document without restarting the Host', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'next-renderer-stale-boot-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  fixture.hostReady = true
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const main = fixture.windows[0]
+    const sender = { sender: main.webContents, senderFrame: main.webContents.mainFrame }
+    let finishInjections!: () => void
+    fixture.injections.mockImplementationOnce(() => new Promise(resolve => { finishInjections = () => resolve([]) }))
+    const boot = fixture.handlers.get('dsh-next:boot')!
+    const oldBoot = boot(sender)
+    const superseded = expect(oldBoot).rejects.toThrow('superseded')
+    await vi.waitFor(() => expect(fixture.injections).toHaveBeenCalledOnce())
+    await main.loadURL('dsh-app://app/')
+    finishInjections()
+    await superseded
+    expect(await boot(sender)).toMatchObject({ profile: 'desktop', documentId: expect.any(String) })
+    expect(fixture.start).toHaveBeenCalledOnce()
+    expect(fixture.stop).not.toHaveBeenCalled()
+    expect(fixture.report).not.toHaveBeenCalled()
+  } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
+})
+
+it('records a clean renderer exit without attempting automatic repair or stopping its Host', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'next-renderer-clean-exit-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const main = fixture.windows[0]
+    vi.useFakeTimers()
+    main.webContents.emit('render-process-gone', {}, { reason: 'clean-exit', exitCode: 0 })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(main.loadedUrls).toHaveLength(1)
+    expect(fixture.stop).not.toHaveBeenCalled()
+    expect(fixture.report).not.toHaveBeenCalled()
+    expect(fixture.diagnosticAppend).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'process-gone', fields: { reason: 'clean-exit', exitCode: 0 },
+    }))
+  } finally { vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
+})
+
+it('uses the existing recovery assistant only after exhausting automatic renderer repair', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'next-renderer-exhausted-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  fixture.hostReady = true
+  fixture.report.mockImplementation(() => fixture.runtimeOptions!.onFailure())
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const main = fixture.windows[0]
+    vi.useFakeTimers()
+    for (const delay of [0, 1000, 3000]) {
+      main.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: -1073741819 })
+      await vi.advanceTimersByTimeAsync(delay)
+      expect(fixture.stop).not.toHaveBeenCalled()
+    }
+    expect(main.loadedUrls).toHaveLength(4)
+    main.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: -1073741819 })
+    expect(fixture.report).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: 'Renderer recovery exhausted: Renderer: crashed' }))
+    expect(fixture.stop).toHaveBeenCalledOnce()
+    expect(main.destroyed).toBe(true)
+    expect(fixture.windows[1].loadedUrls[0]).toContain('#recovery')
+  } finally { vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
+})
+
+it.each(['close', 'quit', 'host-failure'] as const)('cancels pending renderer repair on %s', async action => {
+  const home = mkdtempSync(join(tmpdir(), 'next-renderer-cancel-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const main = fixture.windows[0]
+    vi.useFakeTimers()
+    main.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: -1073741819 })
+    if (action === 'close') main.destroy()
+    else if (action === 'quit') { const { app } = await import('electron'); app.quit() }
+    else fixture.runtimeOptions!.onFailure()
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(main.loadedUrls).toHaveLength(1)
+  } finally { vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
 })
 
 it('starts Safe Mode with fresh desktop and Chromium state while preserving normal state and its instance lock', async () => {
@@ -314,7 +457,7 @@ it.each(['normal', '--next-safe-mode'])('stages an explicit update before hiding
   vi.doMock('../src/update-installer.ts', () => ({ NextUpdateInstaller: class { stage = stage; launch = launch } }))
   vi.doMock('../src/updates.ts', () => ({ NextUpdates: class {
     constructor(private options: { install(): Promise<void> }) {}
-    snapshot() { return { phase: 'ready', version: '2.0.18-next.1', installable: true } }
+    snapshot() { return { phase: 'ready', version: '2.0.19-next.1', installable: true } }
     start() {}
     dispose = async () => {}
     install = () => this.options.install()
@@ -636,7 +779,7 @@ it('persists a Profile switch and relaunches the app only after hiding windows a
   } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
 })
 
-it.each(['complete', 'skip'] as const)('continues first-run setup in the official app and saves before restarting on %s', async outcome => {
+it.each(['complete', 'official', 'skip'] as const)('shows first-run onboarding without a Host and saves before starting it on %s', async outcome => {
   const home = mkdtempSync(join(tmpdir(), 'next-onboarding-'))
   vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
   fixture.needsOnboarding = true
@@ -645,29 +788,81 @@ it.each(['complete', 'skip'] as const)('continues first-run setup in the officia
     await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
     const window = fixture.windows[0]
     const sender = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
+    const command = fixture.handlers.get('dsh-next:command')!
     const setup = fixture.handlers.get('dsh-desktop:setup-onboarding')!
     const manager = new NextProfiles(home)
-    expect(window.webContents.mainFrame.url).toBe('dsh-app://app/')
-    expect(fixture.start).toHaveBeenCalledOnce()
-    expect(await setup(sender, { action: 'read' })).toMatchObject({ required: true, edition: 'next', computerUse: false })
-    await expect(setup({ ...sender, senderFrame: { url: 'dsh-app://app/' } }, { action: 'read' })).rejects.toThrow()
-    await expect(setup(sender, { action: 'finish', profile: 'other' })).rejects.toThrow('unavailable')
-    await expect(setup(sender, { action: 'finish', profile: 'desktop', selection: { market: 'invalid', aaEnabled: false, computerUse: false } })).rejects.toThrow('Invalid setup choices')
+    expect(window.webContents.mainFrame.url).toMatch(/#onboarding$/)
+    expect(window.size).toEqual({ width: 1040, height: 720 })
+    expect(window.minSize).toEqual({ width: 680, height: 560 })
+    expect(fixture.start).not.toHaveBeenCalled()
+    expect(fixture.handlers.get('dsh-next:state')!(sender)).toMatchObject({ onboarding: true, onboardingComputerUse: false })
+    fixture.trays[0].menu[0].click()
+    fixture.trays[0].menu.find((item: any) => item.accelerator === 'CmdOrCtrl+,').click()
+    await command(sender, { type: 'restart-onboarding' })
+    expect(fixture.windows).toHaveLength(1)
+    expect(window.loadedUrls).toHaveLength(1)
+    expect(fixture.start).not.toHaveBeenCalled()
+    await expect(command(sender, { type: 'onboarding-complete', profile: 'other' })).rejects.toThrow('unavailable')
+    expect(() => command({ ...sender, senderFrame: { url: window.webContents.mainFrame.url } },
+      { type: 'onboarding-skip', profile: 'desktop' })).toThrow('Rejected')
+    await expect(command(sender, { type: 'onboarding-complete', profile: 'desktop',
+      features: { market: false, remoteControl: 'yes' }, computerUse: false })).rejects.toThrow('Invalid Next features')
+    expect(fixture.start).not.toHaveBeenCalled()
     expect(manager.onboardingRequired('desktop')).toBe(true)
-    fixture.restart.mockImplementationOnce(async () => {
+    fixture.start.mockImplementationOnce(async () => {
       expect(manager.onboardingRequired('desktop')).toBe(false)
       expect(manager.features('desktop')).toEqual(outcome === 'skip'
-        ? { market: false, remoteControl: false } : { market: false, dshMarket: true, remoteControl: true })
+        ? { market: false, remoteControl: false }
+        : outcome === 'official'
+          ? { market: false, officialMarket: true, remoteControl: false }
+          : { market: false, dshMarket: true, remoteControl: true })
       expect(manager.computerUseEnabled('desktop')).toBe(outcome === 'complete')
     })
-    await setup(sender, { action: 'finish', profile: 'desktop', ...(outcome === 'complete' ? {
-      selection: { market: 'dsh-market', aaEnabled: true, computerUse: true },
-    } : {}) })
-    expect(fixture.restart).toHaveBeenCalledOnce()
-    expect(fixture.windows).toHaveLength(1)
-    expect(window.loadedUrls).toEqual(['dsh-app://app/', 'dsh-app://app/'])
-    expect(await setup(sender, { action: 'read' })).toMatchObject({ required: false })
-    await expect(setup(sender, { action: 'finish', profile: 'desktop' })).rejects.toThrow('unavailable')
+    await command(sender, outcome === 'skip' ? { type: 'onboarding-skip', profile: 'desktop' }
+      : { type: 'onboarding-complete', profile: 'desktop', computerUse: outcome === 'complete',
+        features: outcome === 'official'
+          ? { market: false, officialMarket: true, remoteControl: false }
+          : { market: false, dshMarket: true, remoteControl: true } })
+    expect(fixture.start).toHaveBeenCalledOnce()
+    expect(fixture.restart).not.toHaveBeenCalled()
+    expect(window.destroyed).toBe(true)
+    expect(fixture.windows).toHaveLength(2)
+    const main = fixture.windows[1]
+    const mainSender = { sender: main.webContents, senderFrame: main.webContents.mainFrame }
+    expect(main.webContents.mainFrame.url).toBe('dsh-app://app/')
+    expect(await setup(mainSender, { action: 'read' })).toMatchObject({
+      required: false,
+      accountPending: outcome !== 'skip',
+      input: { market: outcome === 'skip' ? 'disabled' : outcome === 'official' ? 'official-market' : 'dsh-market' },
+    })
+    await expect(setup(mainSender, { action: 'finish', profile: 'desktop' })).rejects.toThrow('unavailable')
+  } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
+})
+
+it('keeps pre-Host onboarding open after a save failure and starts only after a successful retry', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'next-onboarding-save-retry-'))
+  vi.stubEnv('DSH_DESKTOP_NEXT_HOME', home)
+  fixture.needsOnboarding = true
+  try {
+    await import('../src/main.ts')
+    await vi.waitFor(() => expect(fixture.windows).toHaveLength(1))
+    const window = fixture.windows[0]
+    const sender = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
+    const command = fixture.handlers.get('dsh-next:command')!
+    const save = vi.spyOn(fixture.profiles!, 'finishOnboarding').mockImplementationOnce(() => { throw new Error('Cannot save Profile') })
+    try {
+      const choice = { type: 'onboarding-complete', profile: 'desktop', computerUse: false,
+        features: { market: false, remoteControl: false } }
+      await expect(command(sender, choice)).rejects.toThrow('Cannot save Profile')
+      expect(fixture.start).not.toHaveBeenCalled()
+      expect(fixture.report).not.toHaveBeenCalled()
+      expect(fixture.handlers.get('dsh-next:state')!(sender)).toMatchObject({ onboarding: true, busy: false })
+      expect(new NextProfiles(home).onboardingRequired('desktop')).toBe(true)
+      expect(window.destroyed).toBe(false)
+      await command(sender, choice)
+      expect(fixture.start).toHaveBeenCalledOnce()
+      expect(new NextProfiles(home).onboardingRequired('desktop')).toBe(false)
+    } finally { save.mockRestore() }
   } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
 })
 
@@ -721,27 +916,26 @@ it.each(['complete', 'skip', 'close'] as const)('reopens a completed Profile wit
     const window = fixture.windows[0]
     const sender = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
     const command = fixture.handlers.get('dsh-next:command')!
-    expect(window.webContents.mainFrame.url).toBe('dsh-app://app/')
-    expect(fixture.start).toHaveBeenCalledOnce()
+    expect(window.webContents.mainFrame.url).toMatch(/#onboarding$/)
+    expect(fixture.start).not.toHaveBeenCalled()
     expect(fixture.handlers.get('dsh-next:state')!(sender)).toMatchObject({ onboarding: true, onboardingComputerUse: true, features })
     // Reopening is a launch mode, not a deletion of the completion record.
     expect(manager.onboardingRequired('desktop')).toBe(false)
     if (outcome === 'close') {
       window.close()
-      expect(fixture.start).toHaveBeenCalledOnce()
+      expect(fixture.start).not.toHaveBeenCalled()
     } else {
       await command(sender, outcome === 'skip' ? { type: 'onboarding-skip', profile: 'desktop' }
         : { type: 'onboarding-complete', profile: 'desktop', features: { market: true, remoteControl: false }, computerUse: false })
       expect(fixture.start).toHaveBeenCalledOnce()
-      expect(fixture.restart).toHaveBeenCalledOnce()
-      expect(window.loadedUrls).toEqual(['dsh-app://app/', 'dsh-app://app/'])
+      expect(fixture.windows[1].webContents.mainFrame.url).toBe('dsh-app://app/')
     }
     expect(manager.features('desktop')).toEqual(outcome === 'complete' ? { market: true, remoteControl: false } : features)
     expect(manager.computerUseEnabled('desktop')).toBe(outcome !== 'complete')
     expect(manager.onboardingRequired('desktop')).toBe(false)
     if (outcome !== 'close') {
       const { app } = await import('electron')
-      const main = fixture.windows[0]
+      const main = fixture.windows[1]
       await command({ sender: main.webContents, senderFrame: main.webContents.mainFrame }, { type: 'restart-app' })
       await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalled())
       expect(vi.mocked(app.relaunch).mock.calls[0]![0]!.args).not.toContain('--next-onboarding')
@@ -802,8 +996,8 @@ it('does not mark an unfinished flow complete when its window closes', async () 
     const { app } = await import('electron')
     app.emit('activate')
     expect(fixture.windows).toHaveLength(2)
-    expect(fixture.windows[1].webContents.mainFrame.url).toBe('dsh-app://app/')
-    expect(fixture.start).toHaveBeenCalledOnce()
+    expect(fixture.windows[1].webContents.mainFrame.url).toMatch(/#onboarding$/)
+    expect(fixture.start).not.toHaveBeenCalled()
   } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }) }
 })
 
@@ -884,8 +1078,11 @@ it.each(['cancelled', 'retired', 'failed'] as const)('handles %s main-window nav
     rejectLoad(error)
     // Flush the loadURL and navigation-handler promise chain.
     await new Promise(resolve => setImmediate(resolve))
-    if (kind === 'failed') expect(fixture.report).toHaveBeenCalledWith(error)
-    else expect(fixture.report).not.toHaveBeenCalled()
+    expect(fixture.report).not.toHaveBeenCalled()
+    if (kind === 'failed') {
+      await vi.waitFor(() => expect(main.loadedUrls).toHaveLength(2))
+      expect(fixture.stop).not.toHaveBeenCalled()
+    }
     if (kind === 'retired') {
       main.webContents.emit('did-fail-load', {}, -2, 'retired navigation', 'dsh-app://app/', true)
       expect(fixture.report).not.toHaveBeenCalled()

@@ -67,13 +67,13 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "node scripts/clean.mjs && yarn run generate:types && tsdown && tsc -p tsconfig.json && tsc -p tsconfig.client.json --emitDeclarationOnly && node scripts/verify-client-externals.mjs",
+    "build": "node scripts/clean.mjs && yarn run generate:types && node ../scripts/run-parallel.mjs \"tsdown\" \"tsc -p tsconfig.json\" \"tsc -p tsconfig.client.json --emitDeclarationOnly\" && node scripts/verify-client-externals.mjs",
     "generate:types": "node scripts/generate-contract-types.mjs",
-    "typecheck": "node scripts/generate-contract-types.mjs --check && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "typecheck": "node ../scripts/run-parallel.mjs \"node scripts/generate-contract-types.mjs --check\" \"tsc -p tsconfig.json --noEmit\" \"tsc -p tsconfig.client.json --noEmit\" \"tsc -p tsconfig.tests.json --noEmit\"",
     "test": "vitest run",
     "verify:contracts": "node scripts/generate-contract-types.mjs --check",
     "verify:loader": "node scripts/verify-client-loader.mjs",
-    "check": "node scripts/verify-docs.mjs && yarn run build && node scripts/verify-package-exports.mjs && yarn run verify:loader && yarn run typecheck && yarn run test",
+    "check": "node ../scripts/run-parallel.mjs \"node scripts/verify-docs.mjs\" \"yarn run build\" && node ../scripts/run-parallel.mjs \"node scripts/verify-package-exports.mjs\" \"yarn run verify:loader\" \"tsc -p tsconfig.tests.json --noEmit\" \"yarn run test\"",
     "prepack": "yarn run check"
   },
   "dependencies": {
@@ -86,6 +86,9 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/cordis-plugin-group": "1.0.5",
+    "@deepseek-ai/cordis-plugin-include": "1.0.10",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.6",
     "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.2",
@@ -248,6 +251,9 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/cordis-plugin-group": "1.0.5",
+    "@deepseek-ai/cordis-plugin-include": "1.0.10",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.6",
     "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.2",

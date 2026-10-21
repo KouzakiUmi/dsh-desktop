@@ -1,6 +1,7 @@
 /** Official Desktop transport with a Host-independent native shell. */
 import { installDesktopShortcuts } from './keyboard.ts'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -43,6 +44,7 @@ import { createArtifactRequest } from './update-transport.ts'
 import { NextUpdateInstaller } from './update-installer.ts'
 import { updateLabel } from './update-state.ts'
 import { DESKTOP_SHUTDOWN_TIMEOUT_MS } from '../adopted/src/shutdown.ts'
+import { isDesktopRendererStatus, NextRendererRecovery } from './renderer-recovery.ts'
 
 // Inherit the package policy across the Host and every runtime child process.
 applyDesktopPackageAgePolicy(process.env)
@@ -83,6 +85,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: {
 } }])
 
 let mainWindow: BrowserWindow | undefined
+let rendererRecovery: NextRendererRecovery | undefined
+let rendererDocumentId = ''
 // Storage partitions outlive individual windows, so the guest owner is process-scoped.
 let desktopShortcuts: ReturnType<typeof installDesktopShortcuts> | undefined
 const browserGuests = new DesktopBrowserGuests(() => runtime.auth ? [new URL(runtime.auth.url).origin] : [])
@@ -127,7 +131,11 @@ const runtime = new NextDesktopRuntime({
     }
   },
   onFailure: () => { if (app.isReady()) openControls('recovery') },
-  onChange: () => { if (app.isReady()) native.refresh() },
+  onChange: () => {
+    if (!app.isReady()) return
+    if (runtime.backend.state.phase === 'ready') rendererRecovery?.booted()
+    native.refresh()
+  },
   onRestart: () => run({ type: 'restart' }),
   onTerminal: () => run({ type: 'terminal' }),
   onNotification: notification => native.notify(notification),
@@ -305,16 +313,18 @@ function createWindow(preload: string, primary = false): BrowserWindow {
 
 function openSettings(page: DesktopSettingsPage = 'general'): void {
   if (quitting) return
+  if (onboarding) { openControls('onboarding'); return }
   if (runtime.recoveryMode || runtime.state().phase === 'error') { openControls('recovery'); return }
   pendingSettings = page
   openMain()
   mainWindow?.webContents.send(IPC.settingsOpen)
 }
 
-function openControls(page: 'general' | 'profiles' | 'create-profile' | 'tools' | 'recovery' | 'permissions' = 'general'): void {
+function openControls(page: 'general' | 'profiles' | 'create-profile' | 'tools' | 'recovery' | 'permissions' | 'onboarding' = 'general'): void {
   if (quitting) return
   if (page === 'general' || page === 'tools' || page === 'permissions') { openSettings(page === 'permissions' ? 'permissions' : 'general'); return }
   if (page === 'recovery' && !runtime.safeMode && !runtime.recoveryMode) {
+    rendererRecovery?.stop()
     runtime.recoveryMode = true
     onboarding = false
     // Destroy bypasses the normal close-to-tray/app-quit handler.
@@ -336,9 +346,10 @@ function openControls(page: 'general' | 'profiles' | 'create-profile' | 'tools' 
     const creating = page === 'create-profile'
     window.setResizable(!creating)
     window.setMinimumSize(creating ? 420 : 680, creating ? 330 : 560)
-    window.setSize(creating ? 480 : 850, creating ? 360 : 800)
+    window.setSize(creating ? 480 : page === 'onboarding' ? 1040 : 850, creating ? 360 : page === 'onboarding' ? 720 : 800)
   }
   if (shellWindow && !shellWindow.isDestroyed()) {
+    if (page === 'onboarding' && shellWindow.webContents.getURL() === url) { show(shellWindow); return }
     resize(shellWindow)
     void shellWindow.loadURL(url).catch(error => runtime.diagnostics.append(String(error), 'error'))
     show(shellWindow); return
@@ -351,19 +362,56 @@ function openControls(page: 'general' | 'profiles' | 'create-profile' | 'tools' 
 function openMain(): void {
   if (quitting) return
   if (runtime.recoveryMode || runtime.state().phase === 'error') { openControls('recovery'); return }
+  if (onboarding) { openControls('onboarding'); return }
   if (mainWindow && !mainWindow.isDestroyed()) { show(mainWindow); return }
   mainWindow = createWindow('preload-app.cjs', true)
   const owner = mainWindow
   // The guest owner installs its own navigation, crash and destruction release paths.
   browserGuests.bind(owner, (guest, name) => desktopShortcuts!.attachGuest(owner, guest, name))
   desktopShortcuts!.attach(owner)
-  mainWindow.on('closed', () => { mainWindow = undefined; onboardingSurfaceActive = false })
-  mainWindow.webContents.on('render-process-gone', (_event, details) => { if (!quitting) runtime.report(new Error(`Renderer: ${details.reason}`)) })
-  mainWindow.webContents.on('preload-error', (_event, _path, error) => runtime.report(error))
-  mainWindow.webContents.on('did-fail-load', (_event, code, message, _url, isMain) => {
-    if (isMain && code !== -3 && !quitting && mainWindow === owner && !owner.isDestroyed()) runtime.report(new Error(message))
+  resetRendererRecovery(owner)
+  mainWindow.on('closed', () => {
+    if (mainWindow !== owner) return
+    rendererRecovery?.stop()
+    mainWindow = undefined; onboardingSurfaceActive = false
   })
-  void loadMainDocument(owner).catch(error => runtime.report(error))
+  mainWindow.webContents.on('did-start-navigation', (_event, _url, inPlace, isMain) => {
+    if (!isMain || inPlace || mainWindow !== owner) return
+    rendererDocumentId = randomUUID()
+    rendererRecovery?.navigating()
+  })
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (mainWindow !== owner) return
+    rendererRecovery?.loaded()
+    if (runtime.backend.state.phase === 'ready') rendererRecovery?.booted()
+  })
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (quitting || mainWindow !== owner || owner.isDestroyed() || runtime.recoveryMode) return
+    // Preserve the native exit code even when automatic recovery succeeds.
+    runtime.diagnostics.record({ source: 'renderer', event: 'process-gone', level: 'error', fields: { reason: details.reason, exitCode: details.exitCode } })
+    if (details.reason !== 'clean-exit') failRenderer(owner, new Error(`Renderer: ${details.reason}`))
+  })
+  mainWindow.webContents.on('preload-error', (_event, _path, error) => failRenderer(owner, error))
+  mainWindow.webContents.on('did-fail-load', (_event, code, message, _url, isMain) => {
+    if (isMain && code !== -3) failRenderer(owner, new Error(message))
+  })
+  void loadMainDocument(owner).catch(error => failRenderer(owner, error))
+}
+
+function resetRendererRecovery(owner: BrowserWindow): void {
+  rendererRecovery?.stop()
+  rendererDocumentId = randomUUID()
+  rendererRecovery = new NextRendererRecovery({
+    available: () => !quitting && !runtime.recoveryMode && mainWindow === owner && !owner.isDestroyed() && runtime.backend.state.phase !== 'error',
+    reload: () => loadMainDocument(owner),
+    exhausted: detail => runtime.report(new Error(`Renderer recovery exhausted: ${detail}`)),
+    record: (event, fields) => runtime.diagnostics.record({ source: 'renderer', event, fields }),
+  })
+}
+
+function failRenderer(owner: BrowserWindow, error: unknown): void {
+  if (quitting || runtime.recoveryMode || mainWindow !== owner || owner.isDestroyed()) return
+  rendererRecovery?.fail(error instanceof Error ? error.message : String(error))
 }
 /** Cancelled or retired window navigations are not Host failures. */
 async function loadMainDocument(owner: BrowserWindow): Promise<void> {
@@ -380,7 +428,10 @@ async function reloadMain(): Promise<void> {
   const existing = mainWindow
   openMain()
   // A newly created window already started its first navigation in openMain().
-  if (existing && existing === mainWindow && !existing.isDestroyed()) await loadMainDocument(existing)
+  if (existing && existing === mainWindow && !existing.isDestroyed()) {
+    resetRendererRecovery(existing)
+    await loadMainDocument(existing).catch(error => failRenderer(existing, error))
+  }
 }
 
 /**
@@ -498,17 +549,19 @@ async function performCommand(input: Record<string, unknown>, type: string, sour
   try {
     if (type === 'onboarding-complete' || type === 'onboarding-skip') {
       if (!onboarding || runtime.safeMode || runtime.recoveryMode || input.profile !== runtime.selected) throw new Error('Onboarding is unavailable for this Profile')
-      await runtime.restart(() => {
-        runtime.profiles.finishOnboarding(runtime.selected, type === 'onboarding-complete'
-          ? { features: input.features, computerUse: input.computerUse } : undefined)
-        onboarding = false
-      })
-      await reloadMain()
+      // The Host has not loaded this Profile yet. Commit choices before starting it.
+      runtime.profiles.finishOnboarding(runtime.selected, type === 'onboarding-complete'
+        ? { features: input.features, computerUse: input.computerUse } : undefined)
+      onboarding = false
+      shellWindow?.hide()
+      void runtime.start().catch(() => {})
+      openMain()
+      shellWindow?.close()
       return
     }
     if (type === 'restart-onboarding') {
-      if (onboarding) { openMain(); return }
       if (runtime.safeMode || runtime.recoveryMode) throw new Error('Onboarding is unavailable in safe or recovery mode')
+      if (onboarding) { openControls('onboarding'); return }
       if (!await confirmed(t('重新打开设置向导？', 'Reopen the setup wizard?'),
         t('应用将重启，并带入当前 Profile 的设置。正在运行的任务会中断。', 'The app will restart with your current Profile settings selected. Running tasks will be interrupted.'))) return
       relaunch = relaunchArguments(process.argv.slice(1), false, false, true)
@@ -533,10 +586,10 @@ async function performCommand(input: Record<string, unknown>, type: string, sour
       return
     }
     if (type === 'reload') {
-      if (runtime.recoveryMode) { openMain(); return }
+      if (runtime.recoveryMode || onboarding) { openMain(); return }
       await reloadMain(); return
     }
-    if (type === 'devtools') { openMain(); (runtime.recoveryMode ? shellWindow : mainWindow)!.webContents.toggleDevTools(); return }
+    if (type === 'devtools') { openMain(); (runtime.recoveryMode || onboarding ? shellWindow : mainWindow)!.webContents.toggleDevTools(); return }
     if (type === 'recovery-action') {
       await recoveryAction(input)
       return
@@ -583,8 +636,9 @@ async function performCommand(input: Record<string, unknown>, type: string, sour
         if (!await confirmed(t('应用访问设置并重启 Host？', 'Apply access settings and restart the Host?'), preferences.browserAccess && preferences.networkExposure === 'lan'
           ? t('开启后，同一网络中的设备可通过 HTTPS 访问。登录链接可授予访问权限，请仅与可信设备共享。正在运行的任务会被中断。', 'Devices on your network can connect over HTTPS. Login links grant access; share only with trusted devices. Running tasks will be interrupted.')
           : undefined)) return
+        rendererRecovery?.stop()
         await runtime.restart(() => runtime.writePreferences(preferences))
-        if (mainWindow) await loadMainDocument(mainWindow)
+        if (mainWindow) await reloadMain()
       } else {
         if (preferences.browserAccess && preferences.networkExposure === 'lan'
           && (!runtime.preferences.browserAccess || runtime.preferences.networkExposure !== 'lan')
@@ -620,6 +674,7 @@ async function performCommand(input: Record<string, unknown>, type: string, sour
       // Like Beta, mode changes cross an application relaunch boundary. The
       // existing quit owner hides windows and confirms Host exit before relaunch.
       if (type === 'safe-mode' && runtime.safeMode) return
+      rendererRecovery?.stop()
       await recoveryStopping
       await runtime.backend.stop()
       relaunch = relaunchArguments(process.argv.slice(1), false, type === 'safe-mode')
@@ -627,6 +682,7 @@ async function performCommand(input: Record<string, unknown>, type: string, sour
       return
     }
     // Recovery actions can always bypass first-run setup to repair or inspect a Profile.
+    rendererRecovery?.stop()
     onboarding = false
     await recoveryStopping
     const change = async (): Promise<void> => {
@@ -789,7 +845,7 @@ async function main(): Promise<void> {
   let inputBlocked = false
   desktopShortcuts = installDesktopShortcuts(() => mainWindow, app.getPath('userData'),
     'windows', () => {}, () => {
-      const blocked = runtime.recoveryMode || onboardingSurfaceActive
+      const blocked = runtime.recoveryMode || onboarding || onboardingSurfaceActive
       if (blocked !== inputBlocked) { inputBlocked = blocked; inputRevision++ }
       return { revision: inputRevision, blocked }
     })
@@ -820,14 +876,26 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(IPC.boot, async event => {
     assertSender(event, mainWindow, APP_URL)
+    const documentId = rendererDocumentId
     await runtime.startup
     if (!runtime.backend.host || !runtime.auth) throw new Error('Next Host is unavailable')
-    return { injections: await runtime.injections(), streamBaseUrl: new URL(runtime.auth.url).origin }
+    const injections = await runtime.injections()
+    assertSender(event, mainWindow, APP_URL)
+    if (documentId !== rendererDocumentId || quitting || runtime.recoveryMode) throw new Error('Next document was superseded')
+    rendererRecovery?.booted()
+    return { injections, streamBaseUrl: new URL(runtime.auth.url).origin, documentId, profile: runtime.selected }
   })
-  ipcMain.handle(IPC.failed, (event, message: unknown) => {
+  ipcMain.handle(IPC.rendererStatus, (event, documentId: unknown, status: unknown) => {
+    assertSender(event, mainWindow, APP_URL)
+    if (!isDesktopRendererStatus(status)) throw new Error('Invalid renderer status')
+    if (documentId !== rendererDocumentId || !documentId) return
+    rendererRecovery?.report(status)
+  })
+  ipcMain.handle(IPC.failed, (event, message: unknown, documentId: unknown) => {
     assertSender(event, mainWindow, APP_URL)
     if (typeof message !== 'string') throw new Error('Invalid boot error')
-    runtime.report(new Error(message.slice(0, 4096)))
+    if (documentId !== undefined && documentId !== rendererDocumentId) return
+    failRenderer(mainWindow!, new Error(message.slice(0, 4096)))
   })
   ipcMain.handle(IPC.state, event => { assertDesktopSender(event); return state() })
   ipcMain.handle('dsh-desktop:setup-onboarding', async (event, request: unknown) => {
@@ -847,7 +915,7 @@ async function main(): Promise<void> {
         computerUse: runtime.profiles.computerUseEnabled(runtime.selected),
         input: { appVersion: version, profileName: runtime.selected, platform: process.platform,
           mode: 'compatibility', macosMaterial: 'off', windowsMaterial: 'off', openBrowser: false, networkExposure: 'loopback',
-          market: features.market ? 'community-market' : features.dshMarket ? 'dsh-market' : 'disabled', aaEnabled: features.remoteControl,
+          market: features.market ? 'community-market' : features.dshMarket ? 'dsh-market' : features.officialMarket ? 'official-market' : 'disabled', aaEnabled: features.remoteControl,
           notifications: { enabled: true, notifyOnTurnCompletion: true, notifyOnTurnFailure: true, notifyOnJobCompletion: false, notifyOnJobFailure: false, notifyOnScheduleCompletion: true, notifyOnScheduleFailure: true } } }
     }
     if (value.action === 'dismiss-account') {
@@ -858,10 +926,10 @@ async function main(): Promise<void> {
     if (value.action !== 'finish' || !onboarding || value.profile !== runtime.selected || runtime.safeMode || runtime.recoveryMode) throw new Error('Setup is unavailable')
     if (value.selection === undefined) return command({ type: 'onboarding-skip', profile: value.profile })
     const choice = value.selection as Record<string, unknown>
-    if (!choice || typeof choice !== 'object' || !['disabled', 'community-market', 'dsh-market'].includes(String(choice.market))
+    if (!choice || typeof choice !== 'object' || !['disabled', 'community-market', 'dsh-market', 'official-market'].includes(String(choice.market))
       || typeof choice.aaEnabled !== 'boolean' || typeof choice.computerUse !== 'boolean') throw new Error('Invalid setup choices')
     return command({ type: 'onboarding-complete', profile: value.profile, computerUse: choice.computerUse,
-      features: { market: choice.market === 'community-market', dshMarket: choice.market === 'dsh-market', remoteControl: choice.aaEnabled } })
+      features: { market: choice.market === 'community-market', dshMarket: choice.market === 'dsh-market', ...(choice.market === 'official-market' ? { officialMarket: true } : {}), remoteControl: choice.aaEnabled } })
   })
   ipcMain.handle(IPC.settingsTake, event => {
     assertSender(event, mainWindow, APP_URL)
@@ -1008,6 +1076,7 @@ async function main(): Promise<void> {
     })
   }
   if (runtime.recoveryMode) openControls('recovery')
+  else if (onboarding) openControls('onboarding')
   else { void runtime.start().catch(() => {}); openMain() }
   app.on('activate', openMain)
   app.on('window-all-closed', () => { if (!native.available && !replacingWindow) app.quit() })
@@ -1017,6 +1086,7 @@ app.on('before-quit', event => {
   if (quitting || !ownsInstance) return
   event.preventDefault()
   quitting = true
+  rendererRecovery?.stop()
   runtime.diagnostics.record({ source: 'electron', event: 'shutdown.start' })
   runtime.diagnostics.flush()
   // Bound the whole shutdown, including cleanup before Host termination starts.
